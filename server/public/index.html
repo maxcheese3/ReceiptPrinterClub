@@ -11,7 +11,6 @@
 </head>
 <body>
 
-  <!-- Background texture -->
   <div class="bg-grid"></div>
 
   <header>
@@ -43,7 +42,8 @@
         <p>Your message will be sent directly to the printer and printed automatically.</p>
       </div>
 
-      <form id="send-form" enctype="multipart/form-data">
+      <form id="send-form">
+
         <!-- Printer selector -->
         <div class="field">
           <label for="printer_id">
@@ -59,22 +59,13 @@
           <div id="printer-status" class="printer-status hidden"></div>
         </div>
 
-        <!-- Sender info -->
-        <div class="field-row">
-          <div class="field">
-            <label for="sender_name">
-              <span class="label-text">Your Name</span>
-              <span class="label-hint">Optional</span>
-            </label>
-            <input type="text" id="sender_name" name="sender_name" placeholder="Jane Smith" maxlength="100" />
-          </div>
-          <div class="field">
-            <label for="sender_email">
-              <span class="label-text">Your Email</span>
-              <span class="label-hint">Optional</span>
-            </label>
-            <input type="email" id="sender_email" name="sender_email" placeholder="jane@example.com" />
-          </div>
+        <!-- Sender name -->
+        <div class="field">
+          <label for="sender_name">
+            <span class="label-text">Your Name</span>
+            <span class="label-hint">Optional</span>
+          </label>
+          <input type="text" id="sender_name" name="sender_name" placeholder="Jane Smith" maxlength="100" />
         </div>
 
         <!-- Message body -->
@@ -87,25 +78,51 @@
           <div class="char-count"><span id="char-count">0</span> / 2000</div>
         </div>
 
-        <!-- Image upload -->
+        <!-- Image section -->
         <div class="field">
           <label>
             <span class="label-text">Image</span>
-            <span class="label-hint">Optional — JPG, PNG, GIF, WebP up to 10 MB</span>
+            <span class="label-hint">Optional — upload a file or take a photo</span>
           </label>
+
+          <!-- Action buttons — always visible, outside the drop zone -->
+          <div class="image-btn-row">
+            <button type="button" class="btn btn-outline" id="browse-btn">
+              <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M2 13l4-4 4 4 3-3 4 3" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="13.5" cy="8.5" r="1.5" fill="currentColor"/></svg>
+              Browse File
+            </button>
+            <button type="button" class="btn btn-outline" id="capture-btn">
+              <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="11" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 4h5l1.5 2H15a1 1 0 011 1v8a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h1L7.5 4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+              Take Photo
+            </button>
+          </div>
+
+          <!-- Hidden file inputs (never visible) -->
+          <input type="file" id="file-browse"   accept="image/*"                      style="display:none" />
+          <input type="file" id="file-capture"  accept="image/*" capture="environment" style="display:none" />
+
+          <!-- Drop zone — only for drag & drop, no pointer-events trap -->
           <div class="drop-zone" id="drop-zone">
-            <input type="file" id="image" name="image" accept="image/*" class="file-input" />
-            <div class="drop-zone-inner" id="drop-zone-inner">
-              <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M20 8v16M13 15l7-7 7 7" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M8 28h24" stroke="var(--fg-muted)" stroke-width="1.5" stroke-linecap="round"/>
-                <path d="M8 32h24" stroke="var(--fg-muted)" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
-              </svg>
-              <p>Drag & drop an image, or <span class="link">browse</span></p>
+            <div class="drop-zone-idle" id="drop-zone-idle">
+              <svg viewBox="0 0 40 40" fill="none"><path d="M20 8v16M13 15l7-7 7 7" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 28h24" stroke="var(--fg-muted)" stroke-width="1.5" stroke-linecap="round"/></svg>
+              <p>or drag &amp; drop an image here</p>
             </div>
             <div class="drop-zone-preview hidden" id="drop-zone-preview">
               <img id="preview-img" src="" alt="Preview" />
               <button type="button" class="remove-image" id="remove-image">✕ Remove</button>
+            </div>
+          </div>
+
+          <!-- Webcam panel (desktop, shown when Take Photo clicked) -->
+          <div class="webcam-panel hidden" id="webcam-panel">
+            <video id="webcam-video" autoplay playsinline muted></video>
+            <canvas id="webcam-canvas" style="display:none"></canvas>
+            <div class="webcam-controls">
+              <button type="button" class="btn btn-primary" id="webcam-snap">
+                <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="11" r="3" fill="currentColor"/><path d="M7.5 4h5l1.5 2H15a1 1 0 011 1v8a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h1L7.5 4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                Capture
+              </button>
+              <button type="button" class="btn btn-outline" id="webcam-cancel">Cancel</button>
             </div>
           </div>
         </div>
@@ -125,7 +142,6 @@
         <h1>Register a Printer</h1>
         <p>Add your Windows printer to the network. You'll receive an API key for the print client.</p>
       </div>
-
       <form id="register-form">
         <div class="field">
           <label for="reg-name">
@@ -134,31 +150,23 @@
           </label>
           <input type="text" id="reg-name" name="name" required placeholder="Office Main Printer" maxlength="80" />
         </div>
-
         <div class="field">
           <label for="reg-desc">
             <span class="label-text">Description</span>
-            <span class="label-hint">Optional — helps senders choose the right printer</span>
+            <span class="label-hint">Optional</span>
           </label>
           <input type="text" id="reg-desc" name="description" placeholder="HP LaserJet in room 204" maxlength="200" />
         </div>
-
         <div class="field">
           <label for="reg-location">
             <span class="label-text">Location</span>
-            <span class="label-hint">Optional — floor, building, etc.</span>
+            <span class="label-hint">Optional</span>
           </label>
           <input type="text" id="reg-location" name="location" placeholder="2nd Floor, East Wing" maxlength="100" />
         </div>
-
-        <button type="submit" class="btn btn-primary" id="register-btn">
-          Register Printer
-        </button>
-
+        <button type="submit" class="btn btn-primary" id="register-btn">Register Printer</button>
         <div id="register-feedback" class="feedback hidden"></div>
       </form>
-
-      <!-- API key reveal box -->
       <div id="api-key-box" class="api-key-box hidden">
         <h2>🎉 Printer Registered!</h2>
         <p>Save your API key now — it won't be shown again.</p>
@@ -172,8 +180,8 @@
           <ol>
             <li>Download the <code>printbridge-client</code> folder to your Windows machine.</li>
             <li>Run <code>npm install</code> inside it.</li>
-            <li>Create a <code>.env</code> file with your API key and server URL (see <code>client/.env.example</code>).</li>
-            <li>Run <code>node client.js</code> — it will poll for messages and print them automatically.</li>
+            <li>Create a <code>.env</code> file with your API key and server URL.</li>
+            <li>Run <code>node client.js</code> — it will poll and print automatically.</li>
           </ol>
         </div>
       </div>
@@ -185,122 +193,53 @@
         <h1>API Reference</h1>
         <p>Integrate PrintBridge with SMS gateways, bots, or any HTTP-capable service.</p>
       </div>
-
       <div class="api-docs">
-
         <div class="endpoint">
-          <div class="endpoint-header">
-            <span class="method get">GET</span>
-            <code>/api/printers</code>
-          </div>
+          <div class="endpoint-header"><span class="method get">GET</span><code>/api/printers</code></div>
           <p>List all active printers.</p>
-          <pre><code>{
-  "printers": [
-    { "id": "uuid", "name": "Office Printer", "location": "2nd Floor", ... }
-  ]
-}</code></pre>
+          <pre><code>{ "printers": [{ "id": "uuid", "name": "Office Printer", ... }] }</code></pre>
         </div>
-
         <div class="endpoint">
-          <div class="endpoint-header">
-            <span class="method post">POST</span>
-            <code>/api/printers</code>
-          </div>
-          <p>Register a new printer. Returns a one-time API key.</p>
-          <pre><code>// Request body (JSON)
-{
-  "name": "My Printer",
-  "description": "HP LaserJet Pro",
-  "location": "Room 101"
-}
+          <div class="endpoint-header"><span class="method post">POST</span><code>/api/messages</code></div>
+          <p>Send a message. Supports text, image upload (multipart), or image by URL.</p>
+          <div class="endpoint-auth">🔑 Optional: <code>X-API-Key</code> header tags message as API-sourced.</div>
+          <pre><code>// Text only
+{ "printer_id": "uuid", "sender_name": "Jane", "body": "Hello!" }
 
-// Response
-{
-  "success": true,
-  "printer": { "id": "...", "name": "My Printer", ... },
-  "api_key": "xxxxxxxx-...",   // ← save this!
-  "message": "Save your API key – it will not be shown again."
-}</code></pre>
-        </div>
+// Image by URL
+{ "printer_id": "uuid", "image_url": "https://example.com/photo.jpg" }
 
-        <div class="endpoint">
-          <div class="endpoint-header">
-            <span class="method post">POST</span>
-            <code>/api/messages</code>
-          </div>
-          <p>Send a message to a printer. Supports both JSON and multipart/form-data (for images).</p>
-          <div class="endpoint-auth">🔑 Optional: include <code>X-API-Key</code> header to tag message as API-sourced.</div>
-          <pre><code>// JSON request
+// Image via OAuth2 (Genesys etc.)
 {
   "printer_id": "uuid",
-  "sender_name": "Jane",
-  "sender_email": "jane@example.com",
-  "body": "Hello from the API!"
-}
-
-// cURL with image
-curl -X POST https://yourserver:3000/api/messages \
-  -H "X-API-Key: your-api-key" \
-  -F "printer_id=uuid" \
-  -F "body=Check out this image" \
-  -F "image=@/path/to/photo.jpg"</code></pre>
+  "image_url": "https://api-downloads.mypurecloud.com/...",
+  "oauth_token_url": "https://login.mypurecloud.com/oauth/token",
+  "oauth_client_id": "your-client-id",
+  "oauth_client_secret": "your-client-secret"
+}</code></pre>
         </div>
-
         <div class="endpoint">
-          <div class="endpoint-header">
-            <span class="method get">GET</span>
-            <code>/api/messages/poll</code>
-          </div>
-          <p>Poll for pending messages (used by the print client). Marks messages as <em>printing</em>.</p>
+          <div class="endpoint-header"><span class="method get">GET</span><code>/api/messages/poll</code></div>
+          <p>Fetch and claim pending messages (used by the print client).</p>
           <div class="endpoint-auth">🔑 Requires <code>X-API-Key</code> header.</div>
-          <pre><code>curl https://yourserver:3000/api/messages/poll \
-  -H "X-API-Key: your-api-key"</code></pre>
         </div>
-
         <div class="endpoint">
-          <div class="endpoint-header">
-            <span class="method patch">PATCH</span>
-            <code>/api/messages/:id</code>
-          </div>
+          <div class="endpoint-header"><span class="method patch">PATCH</span><code>/api/messages/:id</code></div>
           <p>Report print result back to the server.</p>
           <div class="endpoint-auth">🔑 Requires <code>X-API-Key</code> header.</div>
-          <pre><code>// Body
-{ "status": "printed" }
-// or on failure:
-{ "status": "failed", "error": "Printer offline" }</code></pre>
+          <pre><code>{ "status": "printed" }
+// or: { "status": "failed", "error": "Printer offline" }</code></pre>
         </div>
-
         <div class="endpoint">
-          <div class="endpoint-header">
-            <span class="method">EMAIL</span>
-            <code>smtp://yourserver:2525</code>
-          </div>
-          <p>Send an email to <code>&lt;printer-id&gt;@print.local</code> or <code>&lt;printer-slug&gt;@print.local</code>. The subject and body become the message; image attachments are printed too.</p>
-          <pre><code>To: office-printer@print.local
-From: sender@example.com
-Subject: Hello!
-
-This text will be printed.</code></pre>
+          <div class="endpoint-header"><span class="method">EMAIL</span><code>smtp://yourserver:2525</code></div>
+          <p>Send email to <code>&lt;printer-id&gt;@print.local</code>. Body and image attachments are printed.</p>
         </div>
-
-        <div class="endpoint">
-          <div class="endpoint-header">
-            <span class="method">RATE LIMITS</span>
-            <code></code>
-          </div>
-          <p>All API endpoints: <strong>10 requests / 60 seconds</strong> per IP.<br/>
-          Message submission: <strong>3 messages / 60 seconds</strong> per IP.</p>
-        </div>
-
       </div>
     </section>
 
   </main>
 
-  <footer>
-    <span>PrintBridge &mdash; Open Source Print Server</span>
-    <a href="https://github.com" target="_blank">GitHub</a>
-  </footer>
+  <footer><span>PrintBridge &mdash; Open Source Print Server</span></footer>
 
   <script src="/js/app.js"></script>
 </body>
