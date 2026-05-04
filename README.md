@@ -76,6 +76,10 @@ Edit `.env`:
 SERVER_URL=http://your-docker-host:3000
 API_KEY=paste-your-api-key-here
 ```
+You will need to allow script execution:
+Powershell: Set-ExecutionPolicy Unrestricted -Scope CurrentUser
+and install dotenv
+npm install dotenv
 
 Run the client:
 ```powershell
@@ -101,21 +105,6 @@ node install-service.js remove
 - **Email:** send to `<printer-id>@your-server` on port 2525.
 - **API:** `POST /api/messages` with JSON body.
 
----
-
-## Printing quality
-
-For the best print results, install **SumatraPDF** on each Windows client machine:
-
-https://www.sumatrapdfreader.org/download-free-pdf-viewer
-
-Then set in `.env`:
-```
-SUMATRA_PATH=C:\Program Files\SumatraPDF\SumatraPDF.exe
-```
-
-Without SumatraPDF, the client falls back to PowerShell print commands which
-work but may have formatting limitations.
 
 ---
 
