@@ -1,0 +1,28 @@
+# Caddyfile — Caddy reverse proxy for PrintBridge
+#
+# Caddy automatically obtains and renews TLS certificates from Let's Encrypt.
+# Set the DOMAIN environment variable in your .env file.
+#
+# For local testing without a domain, replace {$DOMAIN} with "localhost"
+# and Caddy will use a self-signed cert.
+
+{$DOMAIN} {
+    # Proxy all HTTP traffic to the Node.js server
+    reverse_proxy server:3000
+
+    # Compress responses
+    encode gzip
+
+    # Security headers (Caddy adds HSTS automatically for HTTPS)
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options SAMEORIGIN
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+
+    # Log requests
+    log {
+        output stdout
+        format console
+    }
+}

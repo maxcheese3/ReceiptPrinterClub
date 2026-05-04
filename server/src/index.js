@@ -12,6 +12,9 @@ const printersRouter   = require("./routes/printers");
 const { startSmtpServer } = require("./services/smtp");
 
 const app  = express();
+
+// Trust Caddy/Cloudflare proxy so req.ip reflects the real client IP
+if (process.env.TRUST_PROXY) app.set("trust proxy", parseInt(process.env.TRUST_PROXY, 10) || 1);
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
 // ── Security & logging ────────────────────────────────────────────────────────

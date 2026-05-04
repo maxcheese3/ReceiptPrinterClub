@@ -1,22 +1,19 @@
 /**
- * Rate limiting — only applied to public message submission.
- * The printer poll endpoint (/api/messages/poll) is API-key authenticated
- * and explicitly excluded.
+ * Rate limiting.
  *
- * Progressive tiers for message POST:
- *   Normal:  10 messages / 60s  — no penalty
- *   Abusive: if exceeded, 10 min cooling period at 3 messages / 60s
+ * - Printer clients (authenticated with X-API-Key) are NEVER rate limited.
+ * - Web/API message submissions are rate limited per IP with progressive tiers:
+ *     Normal:  10 messages / 60s
+ *     Abusive: 10-min cooling period at 3 messages / 60s
  */
 
-const WINDOW_MS      = parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000", 10);
-const BURST_MAX      = 10;
-const COOLING_MAX    = 3;
-const COOLING_MS     = 10 * 60 * 1000;
+const WINDOW_MS   = parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000", 10);
+const BURST_MAX   = 10;
+const COOLING_MAX = 3;
+const COOLING_MS  = 10 * 60 * 1000;
 
-// ip → expiry timestamp of cooling period
-const coolingIPs = new Map();
-// ip → { count, windowStart }
-const burstCounters = new Map();
+const coolingIPs    = new Map(); // ip → expiry
+const burstCounters = new Map(); // ip → { count, windowStart }
 
 function isInCooling(ip) {
   const exp = coolingIPs.get(ip);
@@ -27,13 +24,10 @@ function isInCooling(ip) {
 
 function recordAndCheck(ip) {
   const now = Date.now();
-
   if (isInCooling(ip)) return "cooling";
 
   let c = burstCounters.get(ip);
-  if (!c || now - c.windowStart > WINDOW_MS) {
-    c = { count: 0, windowStart: now };
-  }
+  if (!c || now - c.windowStart > WINDOW_MS) c = { count: 0, windowStart: now };
   c.count++;
   burstCounters.set(ip, c);
 
@@ -45,9 +39,12 @@ function recordAndCheck(ip) {
   return "ok";
 }
 
-// Applied only to POST /api/messages
+// Only applied to POST /api/messages — skips authenticated printer clients
 function messageLimiter(req, res, next) {
-  const ip = req.ip || req.connection.remoteAddress || "unknown";
+  // Printer clients authenticate with X-API-Key — never rate limit them
+  if (req.headers["x-api-key"]) return next();
+
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
   const result = recordAndCheck(ip);
 
   if (result === "cooling") {
@@ -55,7 +52,7 @@ function messageLimiter(req, res, next) {
     const secsLeft = exp ? Math.ceil((exp - Date.now()) / 1000) : 600;
     res.setHeader("Retry-After", secsLeft);
     return res.status(429).json({
-      error: `Too many messages sent. Please wait ${Math.ceil(secsLeft / 60)} minute(s).`,
+      error: `Too many messages. Please wait ${Math.ceil(secsLeft / 60)} minute(s).`,
     });
   }
 
@@ -67,7 +64,7 @@ function messageLimiter(req, res, next) {
   next();
 }
 
-// No-op — kept for import compatibility but not used on poll/printers
-function apiLimiter(req, res, next) { next(); }
+// No blanket API limiter — was causing false positives on poll endpoint
+function apiLimiter(_req, _res, next) { next(); }
 
 module.exports = { apiLimiter, messageLimiter };
