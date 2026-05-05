@@ -7,7 +7,6 @@ services:
       dockerfile: Dockerfile
     container_name: printbridge-server
     restart: unless-stopped
-    # No longer exposed directly — Caddy proxies to it internally
     expose:
       - "3000"
       - "2525"
@@ -21,15 +20,14 @@ services:
       - DATA_DIR=/app/data
       - UPLOAD_DIR=/app/data/uploads
       - RATE_LIMIT_WINDOW_MS=60000
-      # Trust Caddy's forwarded IP headers so rate limiting sees real client IPs
       - TRUST_PROXY=1
     networks:
       - internal
 
-  # ── Caddy — HTTPS reverse proxy with automatic Let's Encrypt certs ──────────
-  # Used when hosting with a real domain + open ports 80/443.
-  # Set DOMAIN in .env (e.g. DOMAIN=print.yourdomain.com).
-  # Comment out this service if using Cloudflare Tunnel instead.
+  # ── Caddy — HTTPS reverse proxy (Option B: domain + port forwarding) ────────
+  # Set DOMAIN=print.yourdomain.com in .env, forward ports 80/443 on router.
+  # Comment this out if using Cloudflare Tunnel instead.
+  #
   # caddy:
   #   image: caddy:2-alpine
   #   container_name: printbridge-caddy
@@ -48,12 +46,10 @@ services:
   #   depends_on:
   #     - server
 
-  # ── Cloudflare Tunnel — zero-config public HTTPS, no port forwarding needed ─
-  # Alternative to Caddy if you don't have a static IP or open ports.
-  # 1. Create a tunnel at https://one.dash.cloudflare.com → Zero Trust → Networks → Tunnels
-  # 2. Copy the tunnel token and set CLOUDFLARE_TUNNEL_TOKEN in .env
-  # 3. Uncomment this service and comment out caddy above.
-  #
+  # ── Cloudflare Tunnel (Option A: no port forwarding needed) ─────────────────
+  # 1. Create tunnel at https://one.dash.cloudflare.com → Zero Trust → Networks → Tunnels
+  # 2. Set public hostname: service = http://server:3000
+  # 3. Paste tunnel token into .env as CLOUDFLARE_TUNNEL_TOKEN=...
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: printbridge-cloudflared
@@ -72,8 +68,4 @@ networks:
 
 volumes:
   printbridge-data:
-    driver: local
-  caddy-data:
-    driver: local
-  caddy-config:
     driver: local
