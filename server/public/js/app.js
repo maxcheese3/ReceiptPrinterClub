@@ -12,7 +12,7 @@ document.querySelectorAll(".nav-tab").forEach((tab) => {
 const printerSelect = document.getElementById("printer_id");
 const printerStatus = document.getElementById("printer-status");
 const STORAGE_KEY   = "printbridge_last_printer";
-let printerMap = {};
+let printerMap      = {};
 
 async function loadPrinters() {
   try {
@@ -62,23 +62,21 @@ function onPrinterChanged() {
     printerStatus.textContent = "⚫ Not yet connected" + (p.description ? " — " + p.description : "");
   }
   applyColumns(p.columns || 22);
-  const fsEl = document.getElementById("font-size-select");
-  if (p.font_size) fsEl.value = p.font_size;
+  if (p.font_size) fontSizeSel.value = p.font_size;
 }
 
 loadPrinters();
 printerSelect.addEventListener("change", onPrinterChanged);
 
-/* ── Column ruler (vertical line overlay) ────────────────────────────────────── */
-const bodyTextarea  = document.getElementById("body");
-const textareaWrap  = document.getElementById("textarea-wrap");
-const rulerLine     = document.getElementById("col-ruler-line");
-const colStatus     = document.getElementById("col-status");
-const charCountEl   = document.getElementById("char-count");
-const fontSizeSel   = document.getElementById("font-size-select");
-const wrapToggle    = document.getElementById("wordwrap-toggle");
+/* ── Textarea + ruler ────────────────────────────────────────────────────────── */
+const bodyTextarea = document.getElementById("body");
+const rulerLine    = document.getElementById("col-ruler-line");
+const colStatus    = document.getElementById("col-status");
+const charCountEl  = document.getElementById("char-count");
+const fontSizeSel  = document.getElementById("font-size-select");
+const wrapToggle   = document.getElementById("wordwrap-toggle");
 
-let currentMaxCols  = 22;
+let currentMaxCols = 22;
 
 function applyColumns(cols) {
   currentMaxCols = cols;
@@ -87,71 +85,60 @@ function applyColumns(cols) {
 }
 
 function positionRuler() {
-  // Measure the pixel width of exactly `currentMaxCols` characters
-  // using a hidden <span> with identical font/size to the textarea.
-  // This is pixel-perfect regardless of font size or zoom level.
-  if (!rulerLine._span) {
-    const span = document.createElement("span");
-    span.style.cssText = [
-      "position:absolute", "visibility:hidden", "white-space:pre",
-      "font-family:'Courier New',Courier,monospace",
-      "font-size:13px", "line-height:1.4",
-      "pointer-events:none", "top:-9999px", "left:-9999px"
-    ].join(";");
-    document.body.appendChild(span);
-    rulerLine._span = span;
-  }
-  // Use a string of 'M' characters — widest monospace char, gives conservative measure
-  rulerLine._span.textContent = "M".repeat(currentMaxCols);
-  const charsPx = rulerLine._span.getBoundingClientRect().width;
+  // Use a canvas to measure text with the EXACT same font as the textarea.
+  // getComputedStyle gives us the real rendered font after CSS is applied.
+  const computed  = window.getComputedStyle(bodyTextarea);
+  const font      = computed.font; // e.g. "13px 'Courier New', Courier, monospace"
 
-  // The textarea has 14px left padding + 14px right padding
-  const PADDING_LEFT = 14;
-  // Position the line at left-padding + charsPx from the left of the textarea
-  rulerLine.style.left  = (PADDING_LEFT + charsPx) + "px";
+  if (!rulerLine._canvas) {
+    rulerLine._canvas = document.createElement("canvas");
+  }
+  const ctx = rulerLine._canvas.getContext("2d");
+  ctx.font  = font;
+
+  // Measure exactly currentMaxCols 'M' characters (widest monospace glyph)
+  const charsPx = ctx.measureText("M".repeat(currentMaxCols)).width;
+
+  // Account for the textarea's left padding (read from computed style)
+  const paddingLeft = parseFloat(computed.paddingLeft) || 14;
+  rulerLine.style.left  = (paddingLeft + charsPx) + "px";
   rulerLine.style.right = "auto";
 }
 
 function updateStats() {
-  const text  = bodyTextarea.value;
-  const lines = text.split("\n");
+  const text       = bodyTextarea.value;
+  const lines      = text.split("\n");
   const maxLineLen = Math.max(...lines.map((l) => [...l].length), 0);
-  const over  = maxLineLen > currentMaxCols;
+  const over       = maxLineLen > currentMaxCols;
   colStatus.textContent = `Longest line: ${maxLineLen} / ${currentMaxCols} cols`;
   colStatus.className   = over ? "col-over" : "";
   charCountEl.textContent = [...text].length;
 }
 
-// Reposition ruler on font size change, window resize, or zoom
 fontSizeSel.addEventListener("change", () => {
-  // Recalculate columns proportionally if no printer selected,
-  // otherwise just refresh ruler position (printer columns are fixed)
   const id = printerSelect.value;
   if (!id || !printerMap[id]) {
-    const fs = parseInt(fontSizeSel.value, 10);
-    applyColumns(Math.round(22 * (9 / fs)));
+    // No printer selected: scale columns proportionally with font size
+    applyColumns(Math.round(22 * (9 / (parseInt(fontSizeSel.value, 10) || 9))));
   } else {
-    positionRuler();
+    positionRuler(); // printer columns are fixed, ruler just repositions
   }
   updateStats();
 });
 
 window.addEventListener("resize", positionRuler);
 bodyTextarea.addEventListener("input", updateStats);
-
-// Initial position after fonts load
 document.fonts.ready.then(positionRuler);
-setTimeout(positionRuler, 300); // fallback
+setTimeout(positionRuler, 200);
 
 /* ── Word wrap toggle ────────────────────────────────────────────────────────── */
+// Controls both the textarea display AND what gets sent to the printer.
+// When wrap=on:  textarea soft-wraps at column limit, printer word-wraps body.
+// When wrap=off: textarea scrolls horizontally, printer prints lines as-is.
 wrapToggle.addEventListener("change", () => {
-  if (wrapToggle.checked) {
-    bodyTextarea.classList.add("word-wrap-on");
-  } else {
-    bodyTextarea.classList.remove("word-wrap-on");
-  }
+  bodyTextarea.classList.toggle("word-wrap-on", wrapToggle.checked);
 });
-// Default: wrap on
+// Default on
 bodyTextarea.classList.add("word-wrap-on");
 
 /* ── Image handling ──────────────────────────────────────────────────────────── */
@@ -198,17 +185,17 @@ function hideWebcam() {
   webcamVideo.srcObject = null;
 }
 
-browseBtn.addEventListener("click",  (e) => { e.preventDefault(); e.stopPropagation(); fileBrowse.click(); });
-fileBrowse.addEventListener("change", ()  => { if (fileBrowse.files[0])  setImage(fileBrowse.files[0]); });
-fileCapture.addEventListener("change",()  => { if (fileCapture.files[0]) setImage(fileCapture.files[0]); });
-removeBtn.addEventListener("click",  (e) => { e.preventDefault(); clearImage(); });
+browseBtn.addEventListener("click",   (e) => { e.preventDefault(); e.stopPropagation(); fileBrowse.click(); });
+fileBrowse.addEventListener("change",  () => { if (fileBrowse.files[0])  setImage(fileBrowse.files[0]); });
+fileCapture.addEventListener("change", () => { if (fileCapture.files[0]) setImage(fileCapture.files[0]); });
+removeBtn.addEventListener("click",   (e) => { e.preventDefault(); clearImage(); });
 
 captureBtn.addEventListener("click", async (e) => {
   e.preventDefault(); e.stopPropagation();
   if (/Mobi|Android|iPhone|iPad|IEMobile/i.test(navigator.userAgent)) { fileCapture.click(); return; }
   if (!navigator.mediaDevices?.getUserMedia) { fileBrowse.click(); return; }
   try {
-    webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:"user" }, audio:false });
+    webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
     webcamVideo.srcObject = webcamStream;
     webcamPanel.classList.remove("hidden");
     dropZoneIdle.classList.add("hidden");
@@ -222,7 +209,7 @@ webcamSnap.addEventListener("click", (e) => {
   webcamCanvas.width = w; webcamCanvas.height = h;
   webcamCanvas.getContext("2d").drawImage(webcamVideo, 0, 0, w, h);
   webcamCanvas.toBlob((blob) => {
-    setImage(new File([blob], `photo-${Date.now()}.jpg`, { type:"image/jpeg" }));
+    setImage(new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" }));
     webcamPanel.classList.add("hidden");
   }, "image/jpeg", 0.92);
 });
@@ -261,11 +248,14 @@ sendForm.addEventListener("submit", async (e) => {
     const name = document.getElementById("sender_name").value.trim();
     if (name) fd.append("sender_name", name);
     if (body) fd.append("body", body);
+    // Tell the print client whether to word-wrap this message
+    fd.append("word_wrap", wrapToggle.checked ? "1" : "0");
     if (currentImageFile) fd.append("image", currentImageFile, currentImageFile.name);
-    const res  = await fetch("/api/messages", { method:"POST", body:fd });
+
+    const res  = await fetch("/api/messages", { method: "POST", body: fd });
     const data = await res.json();
     if (res.ok && data.success) {
-      showFeedback(feedback, "success", `✓ Message sent! Printing shortly. (ID: ${data.message_id.slice(0,8)}…)`);
+      showFeedback(feedback, "success", `✓ Message sent! Printing shortly. (ID: ${data.message_id.slice(0, 8)}…)`);
       bodyTextarea.value = "";
       document.getElementById("sender_name").value = "";
       clearImage(); updateStats();
@@ -281,8 +271,8 @@ sendForm.addEventListener("submit", async (e) => {
 });
 
 /* ── Register form ───────────────────────────────────────────────────────────── */
-const regFontSize    = document.getElementById("reg-font-size");
-const regColumns     = document.getElementById("reg-columns");
+const regFontSize     = document.getElementById("reg-font-size");
+const regColumns      = document.getElementById("reg-columns");
 const regRulerPreview = document.getElementById("reg-ruler-preview");
 
 function updateRegRuler() {
@@ -290,7 +280,7 @@ function updateRegRuler() {
   regRulerPreview.value = "─".repeat(Math.min(cols, 120));
 }
 regFontSize.addEventListener("change", updateRegRuler);
-regColumns.addEventListener("input", updateRegRuler);
+regColumns.addEventListener("input",   updateRegRuler);
 updateRegRuler();
 
 const regForm      = document.getElementById("register-form");
@@ -310,7 +300,7 @@ regForm.addEventListener("submit", async (e) => {
     const fs   = parseInt(regFontSize.value, 10) || 9;
     const cols = parseInt(regColumns.value,  10) || 22;
     const res  = await fetch("/api/printers", {
-      method:"POST", headers:{"Content-Type":"application/json"},
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name:        document.getElementById("reg-name").value.trim(),
         description: document.getElementById("reg-desc").value.trim()     || undefined,
@@ -324,7 +314,7 @@ regForm.addEventListener("submit", async (e) => {
       apiKeyValue.textContent  = data.api_key;
       printerIdVal.textContent = data.printer.id;
       apiKeyBox.classList.remove("hidden");
-      apiKeyBox.scrollIntoView({ behavior:"smooth", block:"nearest" });
+      apiKeyBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
       loadPrinters();
     } else {
       showFeedback(regFeedback, "error", data.error || "Registration failed.");

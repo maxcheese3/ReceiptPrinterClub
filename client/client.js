@@ -1,28 +1,26 @@
 require("dotenv").config();
 
-const axios      = require("axios");
-const fs         = require("fs");
-const path       = require("path");
-const os         = require("os");
-const { spawn }  = require("child_process");
-const Jimp       = require("jimp");
+const axios     = require("axios");
+const fs        = require("fs");
+const path      = require("path");
+const os        = require("os");
+const { spawn } = require("child_process");
+const Jimp      = require("jimp");
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const SERVER_URL   = (process.env.SERVER_URL || "http://localhost:3000").replace(/\/$/, "");
-const API_KEY      = process.env.API_KEY;
-const POLL_MS      = parseInt(process.env.POLL_INTERVAL_MS || "5000", 10);
-const TEMP_DIR     = process.env.TEMP_DIR || path.join(os.tmpdir(), "printbridge");
-const LOG_LEVEL    = process.env.LOG_LEVEL || "info";
-const PRINTER_NAME  = process.env.PRINTER_NAME  || "";
-const PRINT_COLUMNS  = parseInt(process.env.PRINT_COLUMNS  || "22", 10);
-const PRINT_FONT_SIZE = parseInt(process.env.PRINT_FONT_SIZE || "9",  10);
+const SERVER_URL      = (process.env.SERVER_URL || "http://localhost:3000").replace(/\/$/, "");
+const API_KEY         = process.env.API_KEY;
+const POLL_MS         = parseInt(process.env.POLL_INTERVAL_MS  || "5000", 10);
+const TEMP_DIR        = process.env.TEMP_DIR || path.join(os.tmpdir(), "printbridge");
+const LOG_LEVEL       = process.env.LOG_LEVEL || "info";
+const PRINTER_NAME    = process.env.PRINTER_NAME   || "";
+const PRINT_COLUMNS   = parseInt(process.env.PRINT_COLUMNS    || "22", 10);
+const PRINT_FONT_SIZE = parseInt(process.env.PRINT_FONT_SIZE  || "9",  10);
 
-const SCRIPT_DIR = __dirname;
-const PS_TEXT    = path.join(SCRIPT_DIR, "print-text.ps1");
-const PS_IMAGE   = path.join(SCRIPT_DIR, "print-image.ps1");
+const PS_TEXT  = path.join(__dirname, "print-text.ps1");
+const PS_IMAGE = path.join(__dirname, "print-image.ps1");
 
 if (!API_KEY) { console.error("[FATAL] API_KEY not set in .env"); process.exit(1); }
-
 fs.mkdirSync(TEMP_DIR, { recursive: true });
 
 // ── Logger ────────────────────────────────────────────────────────────────────
@@ -36,7 +34,7 @@ const log = {
 };
 function ts() { return new Date().toISOString().replace("T", " ").slice(0, 19); }
 
-// ── HTTP helpers ──────────────────────────────────────────────────────────────
+// ── HTTP ──────────────────────────────────────────────────────────────────────
 const http = axios.create({
   baseURL: SERVER_URL,
   headers: { "X-API-Key": API_KEY },
@@ -44,17 +42,13 @@ const http = axios.create({
 });
 
 async function pollMessages() {
-  const res = await http.get("/api/messages/poll");
-  return res.data.messages || [];
+  return (await http.get("/api/messages/poll")).data.messages || [];
 }
-
-async function reportStatus(messageId, status, error = null) {
-  await http.patch(`/api/messages/${messageId}`, { status, error });
+async function reportStatus(id, status, error = null) {
+  await http.patch(`/api/messages/${id}`, { status, error });
 }
-
 async function downloadBuffer(filename) {
-  const url = `${SERVER_URL}/uploads/${filename}`;
-  const res = await axios.get(url, {
+  const res = await axios.get(`${SERVER_URL}/uploads/${filename}`, {
     responseType: "arraybuffer",
     headers: { "X-API-Key": API_KEY },
     timeout: 30_000,
@@ -65,86 +59,111 @@ async function downloadBuffer(filename) {
 // ── PowerShell runner ─────────────────────────────────────────────────────────
 function runPowerShell(scriptPath, args = [], stdinText = null) {
   return new Promise((resolve, reject) => {
-    const psArgs = [
-      "-NoProfile",
-      "-NonInteractive",
-      "-ExecutionPolicy", "Bypass",
-      "-File", scriptPath,
-      ...args,
-    ];
+    const ps = spawn("powershell.exe", [
+      "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+      "-File", scriptPath, ...args,
+    ], { stdio: ["pipe", "pipe", "pipe"] });
 
-    const ps = spawn("powershell.exe", psArgs, { stdio: ["pipe", "pipe", "pipe"] });
-
-    // Ensure Node sends UTF-8 on this pipe
     ps.stdin.setDefaultEncoding("utf8");
-
     let stderr = "";
     ps.stderr.on("data", (d) => { stderr += d.toString("utf8"); });
     ps.stdout.on("data", (d) => { log.debug("[PS]", d.toString("utf8").trim()); });
+    ps.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr.trim() || `PS exit ${code}`)));
+    ps.on("error", (err) => reject(new Error("PS spawn failed: " + err.message)));
 
-    ps.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(stderr.trim() || `PowerShell exited with code ${code}`));
-    });
-    ps.on("error", (err) => reject(new Error("Failed to start PowerShell: " + err.message)));
-
-    if (stdinText) {
-      // UTF-8 BOM tells PowerShell's [Console]::In to decode as UTF-8
-      // instead of the Windows system codepage (often CP1252 which breaks emoji)
-      ps.stdin.write("\uFEFF", "utf8");
+    if (stdinText !== null) {
+      ps.stdin.write("\uFEFF", "utf8"); // UTF-8 BOM so PowerShell reads as UTF-8
       ps.stdin.write(stdinText, "utf8");
     }
     ps.stdin.end();
   });
 }
 
-// ── Text printing ─────────────────────────────────────────────────────────────
+// ── Text helpers ──────────────────────────────────────────────────────────────
+// Word-wraps preserving leading whitespace (for ASCII art indentation).
+// Lines that start with spaces are wrapped at maxCols but the leading
+// spaces of the first fragment are kept on each continuation too.
 function wordWrap(text, maxCols) {
   const out = [];
   for (const para of text.split("\n")) {
-    if (!para.trim()) { out.push(""); continue; }
-    const words = para.split(" ");
-    let line = "";
+    if (para.trim() === "") { out.push(""); continue; }
+
+    // Detect leading whitespace (ASCII art indentation)
+    const leadMatch = para.match(/^(\s*)/);
+    const lead = leadMatch ? leadMatch[1] : "";
+
+    const words = para.trimStart().split(" ");
+    let line = lead;
     for (const word of words) {
-      const candidate = line ? line + " " + word : word;
-      if (candidate.length > maxCols && line) { out.push(line); line = word; }
-      else line = candidate;
+      const candidate = line === lead ? lead + word : line + " " + word;
+      if ([...candidate].length > maxCols && line !== lead) {
+        out.push(line);
+        line = lead + word; // keep indentation on wrapped lines
+      } else {
+        line = candidate;
+      }
     }
-    if (line) out.push(line);
-    out.push("");
+    if (line.trimEnd()) out.push(line);
   }
   return out;
 }
 
-function buildTextPayload(message) {
+function buildHeader(message) {
   const SEP  = "=".repeat(PRINT_COLUMNS);
   const SEP2 = "-".repeat(PRINT_COLUMNS);
-  const lines = [];
-  lines.push(SEP);
-  lines.push("  PrintBridge Message");
-  lines.push(SEP);
+  const lines = [SEP, "  PrintBridge Message", SEP];
   if (message.sender_name)  lines.push("From:     " + message.sender_name);
   if (message.sender_email) lines.push("Email:    " + message.sender_email);
   lines.push("Received: " + new Date(message.created_at + "Z").toLocaleString());
   lines.push("Via:      " + message.source);
   lines.push(SEP2);
+  return lines;
+}
+
+function buildTextPayload(message, doWordWrap) {
+  const lines = buildHeader(message);
   lines.push("");
   if (message.body && message.body.trim()) {
-    lines.push(...wordWrap(message.body.trim(), PRINT_COLUMNS));
+    if (doWordWrap) {
+      lines.push(...wordWrap(message.body, PRINT_COLUMNS));
+    } else {
+      // No wrap — pass through as-is (user laid it out themselves)
+      lines.push(...message.body.split("\n"));
+    }
   }
   lines.push("");
-  lines.push(SEP);
+  lines.push("=".repeat(PRINT_COLUMNS));
   return lines.join("\r\n");
 }
 
-async function printText(message) {
-  const payload = buildTextPayload(message);
-  const args = ["-FontSize", PRINT_FONT_SIZE.toString()];
+// Minimal header for image-only jobs (sender name + date, no separators)
+function buildImageHeader(message) {
+  const lines = [];
+  if (message.sender_name) {
+    lines.push("From: " + message.sender_name);
+  }
+  lines.push(new Date(message.created_at + "Z").toLocaleString());
+  lines.push("-".repeat(PRINT_COLUMNS));
+  return lines.join("\r\n");
+}
+
+// ── Print functions ───────────────────────────────────────────────────────────
+async function printText(message, doWordWrap) {
+  const payload = buildTextPayload(message, doWordWrap);
+  const args = ["-FontSize", String(PRINT_FONT_SIZE)];
   if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
   await runPowerShell(PS_TEXT, args, payload);
 }
 
-// ── Image printing ────────────────────────────────────────────────────────────
+async function printImageHeader(message) {
+  // Only print header if there's something worth printing
+  if (!message.sender_name && !message.created_at) return;
+  const payload = buildImageHeader(message);
+  const args = ["-FontSize", String(PRINT_FONT_SIZE)];
+  if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
+  await runPowerShell(PS_TEXT, args, payload);
+}
+
 async function printImage(imageBuffer) {
   const img     = await Jimp.read(imageBuffer);
   const tmpFile = path.join(TEMP_DIR, `img-${Date.now()}.bmp`);
@@ -161,20 +180,29 @@ async function printImage(imageBuffer) {
 // ── Process one message ───────────────────────────────────────────────────────
 async function processMessage(message) {
   log.info(`Processing message ${message.id} (source: ${message.source})`);
+
+  // API/email always word-wrap. Web submissions send explicit word_wrap flag.
+  const isApi      = message.source === "api" || message.source === "email";
+  const doWordWrap = isApi || message.word_wrap !== 0;
+
   try {
     if (message.body && message.body.trim()) {
-      await printText(message);
-      log.info("  ✓ Text sent to printer");
+      await printText(message, doWordWrap);
+      log.info("  ✓ Text printed");
     }
+
     if (message.image_path) {
+      // Print a small header above the image so recipient knows who sent it
+      await printImageHeader(message);
       const buf = await downloadBuffer(message.image_path);
       await printImage(buf);
-      log.info("  ✓ Image sent to printer");
+      log.info("  ✓ Image printed");
     }
+
     await reportStatus(message.id, "printed");
     log.info(`  ✓ Message ${message.id} complete`);
   } catch (err) {
-    log.error(`  ✗ Failed:`, err.message);
+    log.error("  ✗ Failed:", err.message);
     await reportStatus(message.id, "failed", err.message).catch(() => {});
   }
 }
@@ -200,11 +228,11 @@ async function poll() {
   }
 }
 
-// ── Startup ───────────────────────────────────────────────────────────────────
 log.info("PrintBridge Client starting…");
 log.info(`  Server:        ${SERVER_URL}`);
 log.info(`  Poll interval: ${POLL_MS}ms`);
 log.info(`  Printer:       ${PRINTER_NAME || "(Windows default)"}`);
+log.info(`  Columns:       ${PRINT_COLUMNS}  Font: ${PRINT_FONT_SIZE}pt`);
 
 poll();
 const interval = setInterval(poll, POLL_MS);

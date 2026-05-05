@@ -1,7 +1,9 @@
 # print-text.ps1
-# Prints text to a thermal receipt printer via Win32 GDI.
-# Uses Courier New (monospace) for ASCII art and aligned text.
-# Full Unicode/emoji support via Segoe UI Emoji fallback.
+# Thermal receipt printer text output via Win32 GDI.
+# - Courier New monospace (ASCII art, aligned columns)
+# - Preserves ALL leading whitespace exactly
+# - Tight line spacing (no internal leading)
+# - Unicode/emoji via Segoe UI Emoji fallback per glyph
 
 param(
   [string]$PrinterName = "",
@@ -14,120 +16,67 @@ param(
 Add-Type -AssemblyName System.Drawing
 
 $inputText = [Console]::In.ReadToEnd()
+$rawLines  = $inputText -split "`r?`n"
 
 $pd = New-Object System.Drawing.Printing.PrintDocument
 if ($PrinterName -ne "") { $pd.PrinterSettings.PrinterName = $PrinterName }
 $pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
 
-# Monospace for body (ASCII art, aligned columns)
-$fontBody  = New-Object System.Drawing.Font("Courier New", $FontSize,    [System.Drawing.FontStyle]::Regular)
-# Smaller sans-serif for meta lines (From, Received, Via)
-$fontMeta  = New-Object System.Drawing.Font("Arial",       ($FontSize-2), [System.Drawing.FontStyle]::Regular)
-# Separator lines
-$fontSep   = New-Object System.Drawing.Font("Courier New", ($FontSize-2), [System.Drawing.FontStyle]::Regular)
-# Emoji / symbol fallback
+$fontBody  = New-Object System.Drawing.Font("Courier New",    $FontSize, [System.Drawing.FontStyle]::Regular)
 $fontEmoji = New-Object System.Drawing.Font("Segoe UI Emoji", $FontSize, [System.Drawing.FontStyle]::Regular)
+$brush     = [System.Drawing.Brushes]::Black
 
-$brush = [System.Drawing.Brushes]::Black
-
-function Is-Meta($line) { return $line -match "^(From:|Email:|Received:|Via:)\s" }
-function Is-Sep($line)  { return $line -match "^[=\-]{3,}$" }
-
-$rawLines    = $inputText -split "`r?`n"
-$parsedLines = foreach ($line in $rawLines) {
-  if     (Is-Sep  $line) { [PSCustomObject]@{ Text=$line; Kind="sep"  } }
-  elseif (Is-Meta $line) { [PSCustomObject]@{ Text=$line; Kind="meta" } }
-  else                   { [PSCustomObject]@{ Text=$line; Kind="body" } }
-}
-
-$allLines  = [System.Collections.Generic.List[object]]::new()
 $lineIndex = 0
 
 $pd.Add_PrintPage({
   param($sender, $ev)
-
   $g    = $ev.Graphics
   $clip = $g.VisibleClipBounds
-  $pageW = [int]$clip.Width
-  $x     = [int]$clip.X
-  $y     = [int]$clip.Y
+  $x    = [float]$clip.X
+  $y    = [float]$clip.Y
 
   $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAlias
 
-  if ($script:allLines.Count -eq 0) {
-    foreach ($entry in $script:parsedLines) {
-      $fnt = switch ($entry.Kind) {
-        "meta" { $script:fontMeta }
-        "sep"  { $script:fontSep  }
-        default { $script:fontBody }
-      }
-      $raw = $entry.Text
-      if ($raw.Trim() -eq "") {
-        $script:allLines.Add([PSCustomObject]@{ Text=""; Kind=$entry.Kind })
-        continue
-      }
-      # Word-wrap — split on spaces but preserve runs of spaces (ASCII art)
-      # For body text we wrap on spaces; for ASCII art lines just truncate at page width
-      $words   = $raw -split "(?<=\s)(?=\S)"  # split keeping whitespace with preceding word
-      $current = ""
-      foreach ($word in $words) {
-        $test  = $current + $word
-        $testW = [int]$g.MeasureString($test, $fnt, [int]::MaxValue,
-                    [System.Drawing.StringFormat]::GenericTypographic).Width
-        if ($testW -gt $pageW -and $current -ne "") {
-          $script:allLines.Add([PSCustomObject]@{ Text=$current.TrimEnd(); Kind=$entry.Kind })
-          $current = $word.TrimStart()
-        } else {
-          $current = $test
-        }
-      }
-      if ($current.Trim() -ne "") {
-        $script:allLines.Add([PSCustomObject]@{ Text=$current.TrimEnd(); Kind=$entry.Kind })
-      }
-    }
-  }
+  # Tight line height: use the font's design em height converted to pixels,
+  # not GetHeight() which includes internal leading/line gap
+  $dpi    = $g.DpiY
+  $lineH  = [float]($script:fontBody.Size * $dpi / 72.0)
 
-  while ($script:lineIndex -lt $script:allLines.Count) {
-    $entry = $script:allLines[$script:lineIndex]
-    $fnt   = switch ($entry.Kind) {
-      "meta" { $script:fontMeta }
-      "sep"  { $script:fontSep  }
-      default { $script:fontBody }
-    }
+  while ($script:lineIndex -lt $script:rawLines.Count) {
+    $line = $script:rawLines[$script:lineIndex]
+    $script:lineIndex++
 
-    $lineH = [int][Math]::Ceiling($fnt.GetHeight($g)) + 1
+    if ($line.Length -gt 0) {
+      # Draw character by character so we can switch to emoji font per glyph
+      # AND preserve leading spaces (DrawString at a PointF never trims)
+      $cx   = $x
+      $chars = [char[]]$line
+      $ci    = 0
 
-    if ($entry.Text -ne "") {
-      # Per-glyph rendering: use emoji font for unicode symbols/emoji
-      $cx     = [float]$x
-      $chars  = [char[]]$entry.Text
-      $ci     = 0
       while ($ci -lt $chars.Length) {
         $ch = $chars[$ci]
-        $charStr = ""
         if ([char]::IsHighSurrogate($ch) -and ($ci+1) -lt $chars.Length -and [char]::IsLowSurrogate($chars[$ci+1])) {
-          $charStr = "" + $ch + $chars[$ci+1]; $ci += 2
+          $charStr = "$ch$($chars[$ci+1])"; $ci += 2
         } else {
-          $charStr = "" + $ch; $ci++
+          $charStr = "$ch"; $ci++
         }
-        $codepoint = [char]::ConvertToUtf32($charStr, 0)
-        $gf = if ($codepoint -gt 0xFFFF -or
-                  ($codepoint -ge 0x2600 -and $codepoint -le 0x27BF) -or
-                  ($codepoint -ge 0x1F300 -and $codepoint -le 0x1FAFF)) {
-          $script:fontEmoji
-        } else { $fnt }
 
-        $fmt  = [System.Drawing.StringFormat]::GenericTypographic
-        $charW = $g.MeasureString($charStr, $gf, [int]::MaxValue, $fmt).Width
-        $g.DrawString($charStr, $gf, $script:brush, $cx, [float]$y, $fmt)
-        $cx += $charW
+        $cp = [char]::ConvertToUtf32($charStr, 0)
+        $gf = if ($cp -gt 0xFFFF -or ($cp -ge 0x2600 -and $cp -le 0x27BF) -or ($cp -ge 0x1F300 -and $cp -le 0x1FAFF)) {
+          $script:fontEmoji
+        } else { $script:fontBody }
+
+        # DrawString at PointF — GDI never trims leading spaces this way
+        $pt  = [System.Drawing.PointF]::new($cx, $y)
+        $sz  = $g.MeasureString($charStr, $gf, $pt, [System.Drawing.StringFormat]::GenericTypographic)
+        $g.DrawString($charStr, $gf, $script:brush, $pt, [System.Drawing.StringFormat]::GenericTypographic)
+        $cx += $sz.Width
       }
     }
 
     $y += $lineH
-    $script:lineIndex++
 
-    if ($y + $lineH -gt ($clip.Y + $clip.Height) -and $script:lineIndex -lt $script:allLines.Count) {
+    if ($y + $lineH -gt ($clip.Y + $clip.Height) -and $script:lineIndex -lt $script:rawLines.Count) {
       $ev.HasMorePages = $true; return
     }
   }
@@ -135,5 +84,6 @@ $pd.Add_PrintPage({
 })
 
 $pd.Print()
-$fontBody.Dispose(); $fontMeta.Dispose(); $fontSep.Dispose(); $fontEmoji.Dispose()
+$fontBody.Dispose()
+$fontEmoji.Dispose()
 $pd.Dispose()

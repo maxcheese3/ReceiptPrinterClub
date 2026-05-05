@@ -201,7 +201,7 @@ router.post(
   async (req, res) => {
     try {
       const {
-        printer_id, sender_name, sender_email, body,
+        printer_id, sender_name, sender_email, body, word_wrap,
         image_url, image_headers,
         oauth_token_url, oauth_client_id, oauth_client_secret,
       } = req.body;
@@ -273,6 +273,7 @@ router.post(
 
       const message = db.createMessage({
         id:           uuidv4(),
+        word_wrap:    word_wrap === "0" || word_wrap === 0 ? 0 : 1,
         printer_id,
         source,
         sender_name:  sender_name  || null,

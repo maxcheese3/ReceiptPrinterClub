@@ -646,6 +646,42 @@ footer a:hover { text-decoration: underline; }
   padding: 5px 28px 5px 10px;
   font-size: 12px;
 }
+
+/* ── Column ruler ────────────────────────────────────────────────────────────── */
+.col-ruler-wrap {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 3px 14px 2px;
+  overflow: hidden;
+}
+.col-ruler {
+  display: block;
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  color: var(--fg-dim);
+  letter-spacing: 0;
+  white-space: pre;
+  user-select: none;
+}
+
+/* Textarea directly below ruler has no top radius */
+.col-ruler-wrap + textarea {
+  border-radius: 0 0 var(--radius) var(--radius);
+  border-top-color: transparent;
+  resize: vertical;
+}
+
+/* ── Char count row ──────────────────────────────────────────────────────────── */
+.char-count-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--fg-muted);
+  margin-top: 4px;
+}
+
 /* ── Textarea toolbar ────────────────────────────────────────────────────────── */
 .textarea-toolbar {
   display: flex;

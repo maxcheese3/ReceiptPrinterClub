@@ -43,6 +43,7 @@ function initSchema() {
       sender_email TEXT,
       body         TEXT,
       image_path   TEXT,
+      word_wrap    INTEGER NOT NULL DEFAULT 1,
       status       TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','printing','printed','failed')),
       created_at   TEXT NOT NULL DEFAULT (datetime('now')),
       printed_at   TEXT,
@@ -58,6 +59,8 @@ function initSchema() {
   const cols = db.prepare("PRAGMA table_info(printers)").all().map(r => r.name);
   if (!cols.includes("columns"))   db.exec("ALTER TABLE printers ADD COLUMN columns   INTEGER NOT NULL DEFAULT 22");
   if (!cols.includes("font_size")) db.exec("ALTER TABLE printers ADD COLUMN font_size INTEGER NOT NULL DEFAULT 9");
+  const msgCols = db.prepare("PRAGMA table_info(messages)").all().map(r => r.name);
+  if (!msgCols.includes("word_wrap")) db.exec("ALTER TABLE messages ADD COLUMN word_wrap INTEGER NOT NULL DEFAULT 1");
 }
 
 // ── Printers ──────────────────────────────────────────────────────────────────
@@ -96,11 +99,11 @@ function deactivatePrinter(id) {
 
 // ── Messages ─────────────────────────────────────────────────────────────────
 
-function createMessage({ id, printer_id, source, sender_name, sender_email, body, image_path }) {
+function createMessage({ id, printer_id, source, sender_name, sender_email, body, image_path, word_wrap }) {
   getDb().prepare(
-    `INSERT INTO messages (id, printer_id, source, sender_name, sender_email, body, image_path)
-     VALUES (@id, @printer_id, @source, @sender_name, @sender_email, @body, @image_path)`
-  ).run({ id, printer_id, source, sender_name, sender_email, body, image_path: image_path || null });
+    `INSERT INTO messages (id, printer_id, source, sender_name, sender_email, body, image_path, word_wrap)
+     VALUES (@id, @printer_id, @source, @sender_name, @sender_email, @body, @image_path, @word_wrap)`
+  ).run({ id, printer_id, source, sender_name, sender_email, body, image_path: image_path || null, word_wrap: word_wrap ?? 1 });
   return getMessageById(id);
 }
 
