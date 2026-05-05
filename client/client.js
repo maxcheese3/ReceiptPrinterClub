@@ -1,18 +1,3 @@
-/**
- * PrintBridge Windows Print Client
- *
- * Polls the PrintBridge server for pending messages and prints them
- * directly via Win32 GDI through PowerShell's System.Drawing.Printing.
- * No third-party applications required.
- *
- * - Text  → print-text.ps1  → System.Drawing.Printing.PrintDocument
- * - Image → print-image.ps1 → System.Drawing.Printing.PrintDocument
- *
- * Requirements: Node.js on Windows, PowerShell (built into Windows)
- *
- * Usage: node client.js
- */
-
 require("dotenv").config();
 
 const axios      = require("axios");
@@ -28,17 +13,15 @@ const API_KEY      = process.env.API_KEY;
 const POLL_MS      = parseInt(process.env.POLL_INTERVAL_MS || "5000", 10);
 const TEMP_DIR     = process.env.TEMP_DIR || path.join(os.tmpdir(), "printbridge");
 const LOG_LEVEL    = process.env.LOG_LEVEL || "info";
-const PRINTER_NAME = process.env.PRINTER_NAME || "";  // blank = Windows default
+const PRINTER_NAME  = process.env.PRINTER_NAME  || "";
+const PRINT_COLUMNS  = parseInt(process.env.PRINT_COLUMNS  || "22", 10);
+const PRINT_FONT_SIZE = parseInt(process.env.PRINT_FONT_SIZE || "9",  10);
 
-// Paths to the bundled PowerShell print scripts (same folder as client.js)
-const SCRIPT_DIR   = __dirname;
-const PS_TEXT      = path.join(SCRIPT_DIR, "print-text.ps1");
-const PS_IMAGE     = path.join(SCRIPT_DIR, "print-image.ps1");
+const SCRIPT_DIR = __dirname;
+const PS_TEXT    = path.join(SCRIPT_DIR, "print-text.ps1");
+const PS_IMAGE   = path.join(SCRIPT_DIR, "print-image.ps1");
 
-if (!API_KEY) {
-  console.error("[FATAL] API_KEY is not set in .env. Exiting.");
-  process.exit(1);
-}
+if (!API_KEY) { console.error("[FATAL] API_KEY not set in .env"); process.exit(1); }
 
 fs.mkdirSync(TEMP_DIR, { recursive: true });
 
@@ -80,8 +63,7 @@ async function downloadBuffer(filename) {
 }
 
 // ── PowerShell runner ─────────────────────────────────────────────────────────
-// Runs a .ps1 script with given args. If stdinData is provided it is piped in.
-function runPowerShell(scriptPath, args = [], stdinData = null) {
+function runPowerShell(scriptPath, args = [], stdinText = null) {
   return new Promise((resolve, reject) => {
     const psArgs = [
       "-NoProfile",
@@ -93,22 +75,24 @@ function runPowerShell(scriptPath, args = [], stdinData = null) {
 
     const ps = spawn("powershell.exe", psArgs, { stdio: ["pipe", "pipe", "pipe"] });
 
+    // Ensure Node sends UTF-8 on this pipe
+    ps.stdin.setDefaultEncoding("utf8");
+
     let stderr = "";
-    ps.stderr.on("data", (d) => { stderr += d.toString(); });
-    ps.stdout.on("data", (d) => { log.debug("[PS]", d.toString().trim()); });
+    ps.stderr.on("data", (d) => { stderr += d.toString("utf8"); });
+    ps.stdout.on("data", (d) => { log.debug("[PS]", d.toString("utf8").trim()); });
 
     ps.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(stderr.trim() || `PowerShell exited with code ${code}`));
-      }
+      if (code === 0) resolve();
+      else reject(new Error(stderr.trim() || `PowerShell exited with code ${code}`));
     });
-
     ps.on("error", (err) => reject(new Error("Failed to start PowerShell: " + err.message)));
 
-    if (stdinData) {
-      ps.stdin.write(stdinData);
+    if (stdinText) {
+      // UTF-8 BOM tells PowerShell's [Console]::In to decode as UTF-8
+      // instead of the Windows system codepage (often CP1252 which breaks emoji)
+      ps.stdin.write("\uFEFF", "utf8");
+      ps.stdin.write(stdinText, "utf8");
     }
     ps.stdin.end();
   });
@@ -123,12 +107,8 @@ function wordWrap(text, maxCols) {
     let line = "";
     for (const word of words) {
       const candidate = line ? line + " " + word : word;
-      if (candidate.length > maxCols && line) {
-        out.push(line);
-        line = word;
-      } else {
-        line = candidate;
-      }
+      if (candidate.length > maxCols && line) { out.push(line); line = word; }
+      else line = candidate;
     }
     if (line) out.push(line);
     out.push("");
@@ -137,10 +117,9 @@ function wordWrap(text, maxCols) {
 }
 
 function buildTextPayload(message) {
-  const SEP  = "=".repeat(58);
-  const SEP2 = "-".repeat(58);
+  const SEP  = "=".repeat(PRINT_COLUMNS);
+  const SEP2 = "-".repeat(PRINT_COLUMNS);
   const lines = [];
-
   lines.push(SEP);
   lines.push("  PrintBridge Message");
   lines.push(SEP);
@@ -150,11 +129,9 @@ function buildTextPayload(message) {
   lines.push("Via:      " + message.source);
   lines.push(SEP2);
   lines.push("");
-
   if (message.body && message.body.trim()) {
-    lines.push(...wordWrap(message.body.trim(), 58));
+    lines.push(...wordWrap(message.body.trim(), PRINT_COLUMNS));
   }
-
   lines.push("");
   lines.push(SEP);
   return lines.join("\r\n");
@@ -162,20 +139,16 @@ function buildTextPayload(message) {
 
 async function printText(message) {
   const payload = buildTextPayload(message);
-  const args = PRINTER_NAME ? ["-PrinterName", PRINTER_NAME] : [];
-  // Pipe the text into the PowerShell script via stdin
+  const args = ["-FontSize", PRINT_FONT_SIZE.toString()];
+  if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
   await runPowerShell(PS_TEXT, args, payload);
 }
 
 // ── Image printing ────────────────────────────────────────────────────────────
 async function printImage(imageBuffer) {
-  // Decode with jimp (handles JPG/PNG/GIF/WebP/BMP), save as BMP to temp file
-  const img = await Jimp.read(imageBuffer);
-
-
+  const img     = await Jimp.read(imageBuffer);
   const tmpFile = path.join(TEMP_DIR, `img-${Date.now()}.bmp`);
   await img.writeAsync(tmpFile);
-
   try {
     const args = ["-ImagePath", tmpFile];
     if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
@@ -193,13 +166,11 @@ async function processMessage(message) {
       await printText(message);
       log.info("  ✓ Text sent to printer");
     }
-
     if (message.image_path) {
       const buf = await downloadBuffer(message.image_path);
       await printImage(buf);
       log.info("  ✓ Image sent to printer");
     }
-
     await reportStatus(message.id, "printed");
     log.info(`  ✓ Message ${message.id} complete`);
   } catch (err) {
@@ -210,7 +181,6 @@ async function processMessage(message) {
 
 // ── Poll loop ─────────────────────────────────────────────────────────────────
 let running = false;
-
 async function poll() {
   if (running) return;
   running = true;
@@ -218,18 +188,13 @@ async function poll() {
     const messages = await pollMessages();
     if (messages.length > 0) {
       log.info(`Received ${messages.length} new message(s)`);
-      for (const msg of messages) {
-        await processMessage(msg);
-      }
+      for (const msg of messages) await processMessage(msg);
     } else {
       log.debug("No pending messages");
     }
   } catch (err) {
-    if (err.response) {
-      log.warn(`Server error ${err.response.status}: ${JSON.stringify(err.response.data)}`);
-    } else {
-      log.warn("Poll error:", err.message);
-    }
+    if (err.response) log.warn(`Server error ${err.response.status}: ${JSON.stringify(err.response.data)}`);
+    else log.warn("Poll error:", err.message);
   } finally {
     running = false;
   }
@@ -243,6 +208,5 @@ log.info(`  Printer:       ${PRINTER_NAME || "(Windows default)"}`);
 
 poll();
 const interval = setInterval(poll, POLL_MS);
-
 process.on("SIGINT",  () => { clearInterval(interval); log.info("Shutting down."); process.exit(0); });
 process.on("SIGTERM", () => { clearInterval(interval); log.info("Shutting down."); process.exit(0); });

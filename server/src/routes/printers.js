@@ -4,21 +4,21 @@ const db = require("../db");
 
 const router = express.Router();
 
-// ── GET /api/printers  (public list for the web form) ────────────────────────
+// GET /api/printers — public list including columns + font_size for the web UI
 router.get("/", (_req, res) => {
-  const printers = db.listPrinters(true);
-  return res.json({ printers });
+  return res.json({ printers: db.listPrinters(true) });
 });
 
-// ── POST /api/printers  (register a new printer) ─────────────────────────────
-// No auth required — anyone can register a printer. The returned api_key
-// is then used by the Windows client.
+// POST /api/printers — register a new printer
 router.post("/", (req, res) => {
-  const { name, description, location } = req.body;
+  const { name, description, location, columns, font_size } = req.body;
 
   if (!name || !name.trim()) {
     return res.status(400).json({ error: "Printer name is required" });
   }
+
+  const cols = Math.max(10, Math.min(200, parseInt(columns, 10) || 22));
+  const fsize = Math.max(6, Math.min(72, parseInt(font_size, 10) || 9));
 
   try {
     const printer = db.createPrinter({
@@ -26,16 +26,17 @@ router.post("/", (req, res) => {
       name:        name.trim(),
       description: description || null,
       location:    location    || null,
-      api_key:     uuidv4(),   // generated server-side
+      api_key:     uuidv4(),
+      columns:     cols,
+      font_size:   fsize,
     });
 
-    // Return api_key only on creation — never again via the API
     const full = db.getPrinterById(printer.id);
     const { api_key, ...safeFields } = full;
     return res.status(201).json({
       success: true,
       printer: safeFields,
-      api_key, // show once
+      api_key,
       message: "Save your API key – it will not be shown again.",
     });
   } catch (err) {
@@ -47,24 +48,19 @@ router.post("/", (req, res) => {
   }
 });
 
-// ── GET /api/printers/:id/stats ───────────────────────────────────────────────
+// GET /api/printers/:id/stats
 router.get("/:id/stats", (req, res) => {
   const printer = db.getPrinterById(req.params.id);
   if (!printer || !printer.active) return res.status(404).json({ error: "Printer not found" });
-  const stats = db.getStats(printer.id);
-  return res.json({ printer_id: printer.id, name: printer.name, stats });
+  return res.json({ printer_id: printer.id, name: printer.name, stats: db.getStats(printer.id) });
 });
 
-// ── DELETE /api/printers/:id  (deactivate) ────────────────────────────────────
+// DELETE /api/printers/:id — deactivate
 router.delete("/:id", (req, res) => {
   const apiKey = req.headers["x-api-key"];
   if (!apiKey) return res.status(401).json({ error: "X-API-Key header required" });
-
   const printer = db.getPrinterByApiKey(apiKey);
-  if (!printer || printer.id !== req.params.id) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
+  if (!printer || printer.id !== req.params.id) return res.status(403).json({ error: "Forbidden" });
   db.deactivatePrinter(printer.id);
   return res.json({ success: true });
 });

@@ -626,3 +626,141 @@ footer a:hover { text-decoration: underline; }
   background: var(--bg-card);
   justify-content: center;
 }
+
+/* ── Body label row (label + font size picker side by side) ─────────────────── */
+.body-label-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.font-size-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.font-size-picker select {
+  width: auto;
+  padding: 5px 28px 5px 10px;
+  font-size: 12px;
+}
+/* ── Textarea toolbar ────────────────────────────────────────────────────────── */
+.textarea-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.textarea-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.control-label {
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.textarea-controls select {
+  width: auto;
+  padding: 4px 26px 4px 8px;
+  font-size: 12px;
+}
+
+/* ── Word wrap toggle ────────────────────────────────────────────────────────── */
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-label input[type="checkbox"] { display: none; }
+.toggle-track {
+  width: 32px;
+  height: 18px;
+  background: var(--border);
+  border-radius: 9px;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.toggle-thumb {
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 12px; height: 12px;
+  background: var(--fg-muted);
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+}
+.toggle-label input:checked ~ .toggle-track { background: var(--accent); }
+.toggle-label input:checked ~ .toggle-track .toggle-thumb {
+  transform: translateX(14px);
+  background: #fff;
+}
+
+/* ── Textarea + ruler overlay ────────────────────────────────────────────────── */
+.textarea-wrap {
+  position: relative;
+}
+.textarea-wrap textarea {
+  width: 100%;
+  font-family: 'Courier New', Courier, monospace !important;
+  font-size: 13px;  /* screen display size — not print size */
+  line-height: 1.4;
+  tab-size: 4;
+  white-space: pre;      /* no wrap by default — toggled by JS */
+  overflow-x: auto;
+  resize: vertical;
+  /* Match exactly so ruler overlay lines up */
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--fg);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.textarea-wrap textarea:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.textarea-wrap textarea.word-wrap-on {
+  white-space: pre-wrap;
+  overflow-x: hidden;
+}
+
+/* Ruler: sits on top right edge of textarea, pointer-events none */
+.col-ruler-overlay {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+.col-ruler-line {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: var(--accent);
+  opacity: 0.35;
+}
+
+/* ── Char count row ──────────────────────────────────────────────────────────── */
+.char-count-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--fg-muted);
+  margin-top: 4px;
+}
+.col-over { color: var(--error) !important; font-weight: 600; }

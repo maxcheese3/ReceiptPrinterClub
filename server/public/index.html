@@ -6,17 +6,16 @@
   <title>PrintBridge — Send to Printer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
-
   <div class="bg-grid"></div>
 
   <header>
     <div class="header-inner">
       <div class="logo">
-        <svg class="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg class="logo-icon" viewBox="0 0 40 40" fill="none">
           <rect x="6" y="14" width="28" height="18" rx="3" fill="var(--accent)" opacity="0.15"/>
           <rect x="6" y="14" width="28" height="18" rx="3" stroke="var(--accent)" stroke-width="2"/>
           <rect x="11" y="8" width="18" height="10" rx="2" fill="var(--bg)" stroke="var(--accent)" stroke-width="2"/>
@@ -35,16 +34,14 @@
 
   <main>
 
-    <!-- ── SEND MESSAGE TAB ───────────────────────────────────────────────── -->
+    <!-- ── SEND TAB ──────────────────────────────────────────────────────── -->
     <section class="tab-panel active" id="tab-send">
       <div class="panel-header">
         <h1>Send a Message</h1>
         <p>Your message will be sent directly to the printer and printed automatically.</p>
       </div>
-
       <form id="send-form">
 
-        <!-- Printer selector -->
         <div class="field">
           <label for="printer_id">
             <span class="label-text">Destination Printer</span>
@@ -59,7 +56,6 @@
           <div id="printer-status" class="printer-status hidden"></div>
         </div>
 
-        <!-- Sender name -->
         <div class="field">
           <label for="sender_name">
             <span class="label-text">Your Name</span>
@@ -68,27 +64,60 @@
           <input type="text" id="sender_name" name="sender_name" placeholder="Jane Smith" maxlength="100" />
         </div>
 
-        <!-- Message body -->
+        <!-- Message field -->
         <div class="field">
-          <label for="body">
-            <span class="label-text">Message</span>
-            <span class="label-hint">Optional if sending an image</span>
-          </label>
-          <textarea id="body" name="body" rows="5" placeholder="Type your message here…" maxlength="2000"></textarea>
-          <div class="char-count"><span id="char-count">0</span> / 2000</div>
+          <!-- Top toolbar: label | font size | word wrap -->
+          <div class="textarea-toolbar">
+            <div>
+              <span class="label-text">Message</span>
+              <span class="label-hint" style="margin-left:6px">Monospace · ASCII art &amp; emoji welcome</span>
+            </div>
+            <div class="textarea-controls">
+              <label class="control-label" for="font-size-select">Size</label>
+              <select id="font-size-select" title="Print font size">
+                <option value="7">7pt</option>
+                <option value="8">8pt</option>
+                <option value="9" selected>9pt</option>
+                <option value="10">10pt</option>
+                <option value="11">11pt</option>
+                <option value="12">12pt</option>
+                <option value="14">14pt</option>
+              </select>
+              <label class="toggle-label" title="Word wrap long lines automatically">
+                <input type="checkbox" id="wordwrap-toggle" checked />
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                <span class="control-label">Wrap</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- The textarea + an overlaid ruler canvas -->
+          <div class="textarea-wrap" id="textarea-wrap">
+            <textarea id="body" name="body" rows="10"
+              placeholder="Type your message here…"
+              maxlength="5000"
+              spellcheck="false"></textarea>
+            <!-- Ruler: absolutely positioned on top of textarea, pointer-events:none -->
+            <div class="col-ruler-overlay" id="col-ruler-overlay" aria-hidden="true">
+              <div class="col-ruler-line" id="col-ruler-line"></div>
+            </div>
+          </div>
+
+          <div class="char-count-row">
+            <span id="col-status"></span>
+            <span><span id="char-count">0</span> chars</span>
+          </div>
         </div>
 
-        <!-- Image section -->
+        <!-- Image -->
         <div class="field">
           <label>
             <span class="label-text">Image</span>
-            <span class="label-hint">Optional — upload a file or take a photo</span>
+            <span class="label-hint">Optional — upload or take a photo</span>
           </label>
-
-          <!-- Action buttons — always visible, outside the drop zone -->
           <div class="image-btn-row">
             <button type="button" class="btn btn-outline" id="browse-btn">
-              <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M2 13l4-4 4 4 3-3 4 3" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="13.5" cy="8.5" r="1.5" fill="currentColor"/></svg>
+              <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M2 13l4-4 4 4 3-3 4 3" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
               Browse File
             </button>
             <button type="button" class="btn btn-outline" id="capture-btn">
@@ -96,12 +125,8 @@
               Take Photo
             </button>
           </div>
-
-          <!-- Hidden file inputs (never visible) -->
-          <input type="file" id="file-browse"   accept="image/*"                      style="display:none" />
-          <input type="file" id="file-capture"  accept="image/*" capture="environment" style="display:none" />
-
-          <!-- Drop zone — only for drag & drop, no pointer-events trap -->
+          <input type="file" id="file-browse"  accept="image/*"                       style="display:none" />
+          <input type="file" id="file-capture" accept="image/*" capture="environment" style="display:none" />
           <div class="drop-zone" id="drop-zone">
             <div class="drop-zone-idle" id="drop-zone-idle">
               <svg viewBox="0 0 40 40" fill="none"><path d="M20 8v16M13 15l7-7 7 7" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 28h24" stroke="var(--fg-muted)" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -112,16 +137,11 @@
               <button type="button" class="remove-image" id="remove-image">✕ Remove</button>
             </div>
           </div>
-
-          <!-- Webcam panel (desktop, shown when Take Photo clicked) -->
           <div class="webcam-panel hidden" id="webcam-panel">
             <video id="webcam-video" autoplay playsinline muted></video>
             <canvas id="webcam-canvas" style="display:none"></canvas>
             <div class="webcam-controls">
-              <button type="button" class="btn btn-primary" id="webcam-snap">
-                <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="11" r="3" fill="currentColor"/><path d="M7.5 4h5l1.5 2H15a1 1 0 011 1v8a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h1L7.5 4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-                Capture
-              </button>
+              <button type="button" class="btn btn-primary" id="webcam-snap">Capture</button>
               <button type="button" class="btn btn-outline" id="webcam-cancel">Cancel</button>
             </div>
           </div>
@@ -131,38 +151,58 @@
           <svg viewBox="0 0 20 20" fill="none"><path d="M3 10l14-7-7 14V10H3z" fill="currentColor"/></svg>
           Send to Printer
         </button>
-
         <div id="form-feedback" class="feedback hidden"></div>
       </form>
     </section>
 
-    <!-- ── REGISTER PRINTER TAB ───────────────────────────────────────────── -->
+    <!-- ── REGISTER TAB ───────────────────────────────────────────────────── -->
     <section class="tab-panel" id="tab-register">
       <div class="panel-header">
         <h1>Register a Printer</h1>
-        <p>Add your Windows printer to the network. You'll receive an API key for the print client.</p>
+        <p>Configure the paper width so the web UI enforces the correct column limit for each printer.</p>
       </div>
       <form id="register-form">
         <div class="field">
-          <label for="reg-name">
-            <span class="label-text">Printer Name</span>
-            <span class="label-hint">Unique display name — visible to senders</span>
-          </label>
-          <input type="text" id="reg-name" name="name" required placeholder="Office Main Printer" maxlength="80" />
+          <label for="reg-name"><span class="label-text">Printer Name</span></label>
+          <input type="text" id="reg-name" required placeholder="Office Receipt Printer" maxlength="80" />
         </div>
         <div class="field">
-          <label for="reg-desc">
-            <span class="label-text">Description</span>
-            <span class="label-hint">Optional</span>
-          </label>
-          <input type="text" id="reg-desc" name="description" placeholder="HP LaserJet in room 204" maxlength="200" />
+          <label for="reg-desc"><span class="label-text">Description</span><span class="label-hint"> Optional</span></label>
+          <input type="text" id="reg-desc" placeholder="58mm thermal by the front desk" maxlength="200" />
         </div>
         <div class="field">
-          <label for="reg-location">
-            <span class="label-text">Location</span>
-            <span class="label-hint">Optional</span>
-          </label>
-          <input type="text" id="reg-location" name="location" placeholder="2nd Floor, East Wing" maxlength="100" />
+          <label for="reg-location"><span class="label-text">Location</span><span class="label-hint"> Optional</span></label>
+          <input type="text" id="reg-location" placeholder="2nd Floor, East Wing" maxlength="100" />
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="reg-font-size">
+              <span class="label-text">Print Font Size</span>
+              <span class="label-hint">Points</span>
+            </label>
+            <select id="reg-font-size">
+              <option value="7">7pt</option>
+              <option value="8">8pt</option>
+              <option value="9" selected>9pt</option>
+              <option value="10">10pt</option>
+              <option value="11">11pt</option>
+              <option value="12">12pt</option>
+              <option value="14">14pt</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="reg-columns">
+              <span class="label-text">Chars Per Line</span>
+              <span class="label-hint">Print a test &amp; count</span>
+            </label>
+            <input type="number" id="reg-columns" min="10" max="200" placeholder="22" />
+          </div>
+        </div>
+        <!-- Live ruler preview using a readonly textarea so font matches exactly -->
+        <div class="field">
+          <label><span class="label-text">Column Width Preview</span><span class="label-hint"> — this is how wide one line will be</span></label>
+          <textarea id="reg-ruler-preview" rows="1" readonly tabindex="-1"
+            style="font-family:'Courier New',monospace;resize:none;color:var(--fg-dim);cursor:default;"></textarea>
         </div>
         <button type="submit" class="btn btn-primary" id="register-btn">Register Printer</button>
         <div id="register-feedback" class="feedback hidden"></div>
@@ -178,61 +218,57 @@
         <div class="next-steps">
           <strong>Next steps:</strong>
           <ol>
-            <li>Download the <code>printbridge-client</code> folder to your Windows machine.</li>
+            <li>Copy the <code>client/</code> folder to your Windows machine.</li>
             <li>Run <code>npm install</code> inside it.</li>
-            <li>Create a <code>.env</code> file with your API key and server URL.</li>
-            <li>Run <code>node client.js</code> — it will poll and print automatically.</li>
+            <li>Copy <code>.env.example</code> → <code>.env</code> and set your API key, server URL, <code>PRINT_FONT_SIZE</code>, and <code>PRINT_COLUMNS</code>.</li>
+            <li>Run <code>node client.js</code>.</li>
           </ol>
         </div>
       </div>
     </section>
 
-    <!-- ── API DOCS TAB ────────────────────────────────────────────────────── -->
+    <!-- ── API TAB ────────────────────────────────────────────────────────── -->
     <section class="tab-panel" id="tab-api">
       <div class="panel-header">
         <h1>API Reference</h1>
-        <p>Integrate PrintBridge with SMS gateways, bots, or any HTTP-capable service.</p>
+        <p>Integrate PrintBridge with SMS, bots, or any HTTP client.</p>
       </div>
       <div class="api-docs">
         <div class="endpoint">
           <div class="endpoint-header"><span class="method get">GET</span><code>/api/printers</code></div>
-          <p>List all active printers.</p>
-          <pre><code>{ "printers": [{ "id": "uuid", "name": "Office Printer", ... }] }</code></pre>
+          <p>List active printers. Includes <code>columns</code> and <code>font_size</code> per printer.</p>
         </div>
         <div class="endpoint">
           <div class="endpoint-header"><span class="method post">POST</span><code>/api/messages</code></div>
-          <p>Send a message. Supports text, image upload (multipart), or image by URL.</p>
-          <div class="endpoint-auth">🔑 Optional: <code>X-API-Key</code> header tags message as API-sourced.</div>
-          <pre><code>// Text only
-{ "printer_id": "uuid", "sender_name": "Jane", "body": "Hello!" }
+          <p>Send a message — text, image upload, or image by URL.</p>
+          <div class="endpoint-auth">🔑 Optional: <code>X-API-Key</code> tags message as API-sourced.</div>
+          <pre><code>// Text
+{ "printer_id": "uuid", "body": "Hello! 👋" }
 
-// Image by URL
+// Image URL
 { "printer_id": "uuid", "image_url": "https://example.com/photo.jpg" }
 
-// Image via OAuth2 (Genesys etc.)
-{
-  "printer_id": "uuid",
+// OAuth2 image (Genesys)
+{ "printer_id": "uuid",
   "image_url": "https://api-downloads.mypurecloud.com/...",
   "oauth_token_url": "https://login.mypurecloud.com/oauth/token",
-  "oauth_client_id": "your-client-id",
-  "oauth_client_secret": "your-client-secret"
-}</code></pre>
+  "oauth_client_id": "id", "oauth_client_secret": "secret" }</code></pre>
         </div>
         <div class="endpoint">
           <div class="endpoint-header"><span class="method get">GET</span><code>/api/messages/poll</code></div>
-          <p>Fetch and claim pending messages (used by the print client).</p>
-          <div class="endpoint-auth">🔑 Requires <code>X-API-Key</code> header.</div>
+          <p>Fetch pending messages (print client).</p>
+          <div class="endpoint-auth">🔑 Requires <code>X-API-Key</code>.</div>
         </div>
         <div class="endpoint">
           <div class="endpoint-header"><span class="method patch">PATCH</span><code>/api/messages/:id</code></div>
-          <p>Report print result back to the server.</p>
-          <div class="endpoint-auth">🔑 Requires <code>X-API-Key</code> header.</div>
+          <p>Report print result.</p>
+          <div class="endpoint-auth">🔑 Requires <code>X-API-Key</code>.</div>
           <pre><code>{ "status": "printed" }
-// or: { "status": "failed", "error": "Printer offline" }</code></pre>
+{ "status": "failed", "error": "Printer offline" }</code></pre>
         </div>
         <div class="endpoint">
           <div class="endpoint-header"><span class="method">EMAIL</span><code>smtp://yourserver:2525</code></div>
-          <p>Send email to <code>&lt;printer-id&gt;@print.local</code>. Body and image attachments are printed.</p>
+          <p>Send to <code>&lt;printer-id&gt;@print.local</code>. Body and image attachments print.</p>
         </div>
       </div>
     </section>
@@ -240,7 +276,6 @@
   </main>
 
   <footer><span>PrintBridge &mdash; Open Source Print Server</span></footer>
-
   <script src="/js/app.js"></script>
 </body>
 </html>
