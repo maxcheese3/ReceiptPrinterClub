@@ -44,7 +44,7 @@ $_g.Dispose(); $_bmp.Dispose()
 # 0.72 of the em-square gives very tight packing with minimal gap between lines.
 # The em-square for Lucida Console Bold includes generous internal spacing;
 # 0.72 reduces to approximately cap-height only.
-$_lineMultiplier = [float]0.72
+$_lineMultiplier = [float]0.62
 
 function Is-Meta($line) {
   return $line -match "^(From:|Email:|Received:|Time:|Via:|={3,}|-{3,})"

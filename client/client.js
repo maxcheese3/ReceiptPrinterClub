@@ -122,7 +122,6 @@ function buildHeader(message) {
 
 function buildTextPayload(message, doWordWrap) {
   const lines = buildHeader(message);
-  lines.push("");
   if (message.body && message.body.trim()) {
     if (doWordWrap) {
       lines.push(...wordWrap(message.body, PRINT_COLUMNS));
@@ -131,7 +130,6 @@ function buildTextPayload(message, doWordWrap) {
       lines.push(...message.body.split("\n"));
     }
   }
-  lines.push("");
   lines.push("=".repeat(PRINT_COLUMNS));
   return lines.join("\r\n");
 }
@@ -143,7 +141,7 @@ function buildImageHeader(message) {
     lines.push("From: " + message.sender_name);
   }
   lines.push("Time: " + new Date(message.created_at + "Z").toLocaleString());
-  lines.push("-".repeat(PRINT_COLUMNS));
+  // lines.push("-".repeat(PRINT_COLUMNS));
   return lines.join("\r\n");
 }
 
