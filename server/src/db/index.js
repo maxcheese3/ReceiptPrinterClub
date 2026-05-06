@@ -44,6 +44,7 @@ function initSchema() {
       body         TEXT,
       image_path   TEXT,
       word_wrap    INTEGER NOT NULL DEFAULT 1,
+      font_size    INTEGER,
       status       TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','printing','printed','failed')),
       created_at   TEXT NOT NULL DEFAULT (datetime('now')),
       printed_at   TEXT,
@@ -61,6 +62,7 @@ function initSchema() {
   if (!cols.includes("font_size")) db.exec("ALTER TABLE printers ADD COLUMN font_size INTEGER NOT NULL DEFAULT 9");
   const msgCols = db.prepare("PRAGMA table_info(messages)").all().map(r => r.name);
   if (!msgCols.includes("word_wrap")) db.exec("ALTER TABLE messages ADD COLUMN word_wrap INTEGER NOT NULL DEFAULT 1");
+  if (!msgCols.includes("font_size")) db.exec("ALTER TABLE messages ADD COLUMN font_size INTEGER");
 }
 
 // ── Printers ──────────────────────────────────────────────────────────────────
@@ -99,11 +101,11 @@ function deactivatePrinter(id) {
 
 // ── Messages ─────────────────────────────────────────────────────────────────
 
-function createMessage({ id, printer_id, source, sender_name, sender_email, body, image_path, word_wrap }) {
+function createMessage({ id, printer_id, source, sender_name, sender_email, body, image_path, word_wrap, font_size }) {
   getDb().prepare(
-    `INSERT INTO messages (id, printer_id, source, sender_name, sender_email, body, image_path, word_wrap)
-     VALUES (@id, @printer_id, @source, @sender_name, @sender_email, @body, @image_path, @word_wrap)`
-  ).run({ id, printer_id, source, sender_name, sender_email, body, image_path: image_path || null, word_wrap: word_wrap ?? 1 });
+    `INSERT INTO messages (id, printer_id, source, sender_name, sender_email, body, image_path, word_wrap, font_size)
+     VALUES (@id, @printer_id, @source, @sender_name, @sender_email, @body, @image_path, @word_wrap, @font_size)`
+  ).run({ id, printer_id, source, sender_name, sender_email, body, image_path: image_path || null, word_wrap: word_wrap ?? 1, font_size: font_size || null });
   return getMessageById(id);
 }
 

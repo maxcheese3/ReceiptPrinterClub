@@ -86,24 +86,26 @@ function runPowerShell(scriptPath, args = [], stdinText = null) {
 function wordWrap(text, maxCols) {
   const out = [];
   for (const para of text.split("\n")) {
+    // Blank line — preserve as empty line
     if (para.trim() === "") { out.push(""); continue; }
 
-    // Detect leading whitespace (ASCII art indentation)
+    // Preserve leading whitespace (indentation / ASCII art)
     const leadMatch = para.match(/^(\s*)/);
     const lead = leadMatch ? leadMatch[1] : "";
+    const rest = para.slice(lead.length);
 
-    const words = para.trimStart().split(" ");
+    const words = rest.split(" ");
     let line = lead;
     for (const word of words) {
       const candidate = line === lead ? lead + word : line + " " + word;
       if ([...candidate].length > maxCols && line !== lead) {
         out.push(line);
-        line = lead + word; // keep indentation on wrapped lines
+        line = lead + word;
       } else {
         line = candidate;
       }
     }
-    if (line.trimEnd()) out.push(line);
+    if (line !== lead || lead) out.push(line);
   }
   return out;
 }
@@ -149,17 +151,18 @@ function buildImageHeader(message) {
 
 // ── Print functions ───────────────────────────────────────────────────────────
 async function printText(message, doWordWrap) {
-  const payload = buildTextPayload(message, doWordWrap);
-  const args = ["-FontSize", String(PRINT_FONT_SIZE)];
+  const payload  = buildTextPayload(message, doWordWrap);
+  const fontSize = message.font_size || PRINT_FONT_SIZE;
+  const args = ["-FontSize", String(fontSize)];
   if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
   await runPowerShell(PS_TEXT, args, payload);
 }
 
 async function printImageHeader(message) {
-  // Only print header if there's something worth printing
   if (!message.sender_name && !message.created_at) return;
-  const payload = buildImageHeader(message);
-  const args = ["-FontSize", String(PRINT_FONT_SIZE)];
+  const payload  = buildImageHeader(message);
+  const fontSize = message.font_size || PRINT_FONT_SIZE;
+  const args = ["-FontSize", String(fontSize)];
   if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
   await runPowerShell(PS_TEXT, args, payload);
 }

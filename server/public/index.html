@@ -90,22 +90,14 @@
               </label>
             </div>
           </div>
-
-          <!-- The textarea + an overlaid ruler canvas -->
-          <div class="textarea-wrap" id="textarea-wrap">
-            <textarea id="body" name="body" rows="10"
-              placeholder="Type your message here…"
-              maxlength="5000"
-              spellcheck="false"></textarea>
-            <!-- Ruler: absolutely positioned on top of textarea, pointer-events:none -->
-            <div class="col-ruler-overlay" id="col-ruler-overlay" aria-hidden="true">
-              <div class="col-ruler-line" id="col-ruler-line"></div>
-            </div>
-          </div>
+          <textarea id="body" name="body" rows="10"
+            placeholder="Type your message here…"
+            maxlength="5000"
+            spellcheck="false"></textarea>
 
           <div class="char-count-row">
-            <span id="col-status"></span>
-            <span><span id="char-count">0</span> chars</span>
+            <span id="col-status">Col 0 / 22</span>
+            <span><span id="char-count">0</span> chars total</span>
           </div>
         </div>
 

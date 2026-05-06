@@ -8,6 +8,71 @@ document.querySelectorAll(".nav-tab").forEach((tab) => {
   });
 });
 
+/* ── Textarea + stats (declared first so functions are available everywhere) ── */
+const bodyTextarea = document.getElementById("body");
+const colStatus    = document.getElementById("col-status");
+const charCountEl  = document.getElementById("char-count");
+const fontSizeSel  = document.getElementById("font-size-select");
+const wrapToggle   = document.getElementById("wordwrap-toggle");
+
+let currentMaxCols = 22;
+
+// Update the character/column counter below the textarea.
+// Shows: "Row X of Y  |  N / M chars on current row"
+function updateStats() {
+  const text  = bodyTextarea.value;
+  const lines = text.split("\n");
+
+  // Find which line the cursor is on
+  const cursorPos  = bodyTextarea.selectionStart ?? text.length;
+  const textBefore = text.slice(0, cursorPos);
+  const cursorLine = textBefore.split("\n").length - 1;
+
+  const currentLineLen = [...(lines[cursorLine] || "")].length;
+  const over = currentLineLen > currentMaxCols;
+
+  colStatus.textContent = `Col ${currentLineLen} / ${currentMaxCols}`;
+  colStatus.className   = over ? "col-over" : "";
+  charCountEl.textContent = [...text].length;
+}
+
+function applyFontSize(pt) {
+  fontSizeSel.value = pt;
+  // Scale textarea display size so it gives a realistic width preview
+  bodyTextarea.style.fontSize = Math.round(pt * 96 / 72) + "px";
+  updateStats();
+}
+
+function applyColumns(cols) {
+  currentMaxCols = cols;
+  updateStats();
+}
+
+fontSizeSel.addEventListener("change", () => {
+  const pt = parseInt(fontSizeSel.value, 10) || 9;
+  const id = typeof printerSelect !== "undefined" ? printerSelect.value : "";
+  if (!id || !printerMap[id]) {
+    // No printer selected — derive column count from base 22 cols at 9pt
+    currentMaxCols = Math.round(22 * 9 / pt);
+  }
+  applyFontSize(pt);
+});
+
+bodyTextarea.addEventListener("input",   updateStats);
+bodyTextarea.addEventListener("keyup",   updateStats);
+bodyTextarea.addEventListener("click",   updateStats);
+bodyTextarea.addEventListener("selectionchange", updateStats);
+
+// Word wrap toggle — controls textarea display and what gets sent to printer
+wrapToggle.addEventListener("change", () => {
+  bodyTextarea.classList.toggle("word-wrap-on", wrapToggle.checked);
+});
+bodyTextarea.classList.add("word-wrap-on"); // default on
+
+// Init after fonts load
+document.fonts.ready.then(() => applyFontSize(parseInt(fontSizeSel.value, 10) || 9));
+setTimeout(() => applyFontSize(parseInt(fontSizeSel.value, 10) || 9), 150);
+
 /* ── Printer data ────────────────────────────────────────────────────────────── */
 const printerSelect = document.getElementById("printer_id");
 const printerStatus = document.getElementById("printer-status");
@@ -39,7 +104,8 @@ async function loadPrinters() {
       printerSelect.value = lastId;
       onPrinterChanged();
     }
-  } catch {
+  } catch (err) {
+    console.error("loadPrinters error:", err);
     printerSelect.innerHTML = '<option value="">Error loading printers</option>';
   }
 }
@@ -48,7 +114,11 @@ function onPrinterChanged() {
   const id = printerSelect.value;
   if (id) localStorage.setItem(STORAGE_KEY, id);
   const p = printerMap[id];
-  if (!p) { printerStatus.className = "printer-status hidden"; applyColumns(22); return; }
+  if (!p) {
+    printerStatus.className = "printer-status hidden";
+    applyColumns(22);
+    return;
+  }
   if (p.last_seen) {
     const diff    = Date.now() - new Date(p.last_seen + "Z").getTime();
     const minutes = Math.floor(diff / 60000);
@@ -61,85 +131,12 @@ function onPrinterChanged() {
     printerStatus.className   = "printer-status offline";
     printerStatus.textContent = "⚫ Not yet connected" + (p.description ? " — " + p.description : "");
   }
-  applyColumns(p.columns || 22);
-  if (p.font_size) fontSizeSel.value = p.font_size;
+  if (p.font_size) applyFontSize(p.font_size);
+  if (p.columns)   applyColumns(p.columns);
 }
 
 loadPrinters();
 printerSelect.addEventListener("change", onPrinterChanged);
-
-/* ── Textarea + ruler ────────────────────────────────────────────────────────── */
-const bodyTextarea = document.getElementById("body");
-const rulerLine    = document.getElementById("col-ruler-line");
-const colStatus    = document.getElementById("col-status");
-const charCountEl  = document.getElementById("char-count");
-const fontSizeSel  = document.getElementById("font-size-select");
-const wrapToggle   = document.getElementById("wordwrap-toggle");
-
-let currentMaxCols = 22;
-
-function applyColumns(cols) {
-  currentMaxCols = cols;
-  positionRuler();
-  updateStats();
-}
-
-function positionRuler() {
-  // Use a canvas to measure text with the EXACT same font as the textarea.
-  // getComputedStyle gives us the real rendered font after CSS is applied.
-  const computed  = window.getComputedStyle(bodyTextarea);
-  const font      = computed.font; // e.g. "13px 'Courier New', Courier, monospace"
-
-  if (!rulerLine._canvas) {
-    rulerLine._canvas = document.createElement("canvas");
-  }
-  const ctx = rulerLine._canvas.getContext("2d");
-  ctx.font  = font;
-
-  // Measure exactly currentMaxCols 'M' characters (widest monospace glyph)
-  const charsPx = ctx.measureText("M".repeat(currentMaxCols)).width;
-
-  // Account for the textarea's left padding (read from computed style)
-  const paddingLeft = parseFloat(computed.paddingLeft) || 14;
-  rulerLine.style.left  = (paddingLeft + charsPx) + "px";
-  rulerLine.style.right = "auto";
-}
-
-function updateStats() {
-  const text       = bodyTextarea.value;
-  const lines      = text.split("\n");
-  const maxLineLen = Math.max(...lines.map((l) => [...l].length), 0);
-  const over       = maxLineLen > currentMaxCols;
-  colStatus.textContent = `Longest line: ${maxLineLen} / ${currentMaxCols} cols`;
-  colStatus.className   = over ? "col-over" : "";
-  charCountEl.textContent = [...text].length;
-}
-
-fontSizeSel.addEventListener("change", () => {
-  const id = printerSelect.value;
-  if (!id || !printerMap[id]) {
-    // No printer selected: scale columns proportionally with font size
-    applyColumns(Math.round(22 * (9 / (parseInt(fontSizeSel.value, 10) || 9))));
-  } else {
-    positionRuler(); // printer columns are fixed, ruler just repositions
-  }
-  updateStats();
-});
-
-window.addEventListener("resize", positionRuler);
-bodyTextarea.addEventListener("input", updateStats);
-document.fonts.ready.then(positionRuler);
-setTimeout(positionRuler, 200);
-
-/* ── Word wrap toggle ────────────────────────────────────────────────────────── */
-// Controls both the textarea display AND what gets sent to the printer.
-// When wrap=on:  textarea soft-wraps at column limit, printer word-wraps body.
-// When wrap=off: textarea scrolls horizontally, printer prints lines as-is.
-wrapToggle.addEventListener("change", () => {
-  bodyTextarea.classList.toggle("word-wrap-on", wrapToggle.checked);
-});
-// Default on
-bodyTextarea.classList.add("word-wrap-on");
 
 /* ── Image handling ──────────────────────────────────────────────────────────── */
 let currentImageFile = null;
@@ -236,8 +233,8 @@ sendForm.addEventListener("submit", async (e) => {
   feedback.className = "feedback hidden";
   const printer_id = printerSelect.value;
   if (!printer_id) { showFeedback(feedback, "error", "Please select a printer."); return; }
-  const body = bodyTextarea.value.trim();
-  if (!body && !currentImageFile) {
+  const body = bodyTextarea.value;
+  if (!body.trim() && !currentImageFile) {
     showFeedback(feedback, "error", "Please enter a message or attach an image."); return;
   }
   submitBtn.disabled = true;
@@ -248,10 +245,9 @@ sendForm.addEventListener("submit", async (e) => {
     const name = document.getElementById("sender_name").value.trim();
     if (name) fd.append("sender_name", name);
     if (body) fd.append("body", body);
-    // Tell the print client whether to word-wrap this message
     fd.append("word_wrap", wrapToggle.checked ? "1" : "0");
+    fd.append("font_size", fontSizeSel.value);
     if (currentImageFile) fd.append("image", currentImageFile, currentImageFile.name);
-
     const res  = await fetch("/api/messages", { method: "POST", body: fd });
     const data = await res.json();
     if (res.ok && data.success) {
@@ -271,18 +267,6 @@ sendForm.addEventListener("submit", async (e) => {
 });
 
 /* ── Register form ───────────────────────────────────────────────────────────── */
-const regFontSize     = document.getElementById("reg-font-size");
-const regColumns      = document.getElementById("reg-columns");
-const regRulerPreview = document.getElementById("reg-ruler-preview");
-
-function updateRegRuler() {
-  const cols = parseInt(regColumns.value, 10) || 22;
-  regRulerPreview.value = "─".repeat(Math.min(cols, 120));
-}
-regFontSize.addEventListener("change", updateRegRuler);
-regColumns.addEventListener("input",   updateRegRuler);
-updateRegRuler();
-
 const regForm      = document.getElementById("register-form");
 const regBtn       = document.getElementById("register-btn");
 const regFeedback  = document.getElementById("register-feedback");
@@ -297,8 +281,8 @@ regForm.addEventListener("submit", async (e) => {
   apiKeyBox.classList.add("hidden");
   regBtn.disabled = true; regBtn.textContent = "Registering…";
   try {
-    const fs   = parseInt(regFontSize.value, 10) || 9;
-    const cols = parseInt(regColumns.value,  10) || 22;
+    const fs   = parseInt(document.getElementById("reg-font-size").value, 10) || 9;
+    const cols = parseInt(document.getElementById("reg-columns").value, 10)   || 22;
     const res  = await fetch("/api/printers", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -310,7 +294,7 @@ regForm.addEventListener("submit", async (e) => {
     });
     const data = await res.json();
     if (res.ok && data.success) {
-      regForm.reset(); updateRegRuler();
+      regForm.reset();
       apiKeyValue.textContent  = data.api_key;
       printerIdVal.textContent = data.printer.id;
       apiKeyBox.classList.remove("hidden");
