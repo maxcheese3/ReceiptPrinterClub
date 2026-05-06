@@ -113,7 +113,7 @@ function wordWrap(text, maxCols) {
 function buildHeader(message) {
   const SEP  = "=".repeat(PRINT_COLUMNS);
   const SEP2 = "-".repeat(PRINT_COLUMNS);
-  const lines = [SEP, "  PrintBridge Message", SEP];
+  const lines = [];// [SEP, "  PrintBridge Message", SEP];
   if (message.sender_name)  lines.push("From:     " + message.sender_name);
   if (message.sender_email) lines.push("Email:    " + message.sender_email);
   lines.push("Received: " + new Date(message.created_at + "Z").toLocaleString());
