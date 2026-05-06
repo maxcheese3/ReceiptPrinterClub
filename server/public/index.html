@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PrintBridge — Send to Printer</title>
+  <title>ReceiptPrinterClub</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700&family=Nunito:wght@400;600;700;800&family=Quicksand:wght@400;500;600;700&family=Press+Start+2P&family=Share+Tech+Mono&family=Cabin:wght@400;600;700&family=Oswald:wght@400;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
@@ -22,13 +22,22 @@
           <rect x="14" y="26" width="12" height="8" rx="1.5" fill="var(--bg)" stroke="var(--fg-muted)" stroke-width="1.5"/>
           <circle cx="28" cy="22" r="2" fill="var(--accent)"/>
         </svg>
-        <span>PrintBridge</span>
+        <span>ReceiptPrinterClub</span>
       </div>
       <nav>
         <button class="nav-tab active" data-tab="send">Send Message</button>
         <button class="nav-tab" data-tab="register">Register Printer</button>
         <button class="nav-tab" data-tab="api">API Docs</button>
+        <button class="nav-tab" data-tab="admin">⚙ Admin</button>
       </nav>
+      <div class="theme-picker" id="theme-picker">
+        <button class="theme-btn active" data-theme="dark" title="Dark Mode">🌑</button>
+        <button class="theme-btn" data-theme="light" title="Light Mode">☀️</button>
+        <button class="theme-btn" data-theme="rush" title="Premium Rush">🚲</button>
+        <button class="theme-btn" data-theme="beans" title="Beans">🫘</button>
+        <button class="theme-btn" data-theme="shrek" title="Shrek">🧅</button>
+        <button class="theme-btn" data-theme="transit" title="Public Transit">🚌</button>
+      </div>
     </div>
   </header>
 
@@ -43,15 +52,12 @@
       <form id="send-form">
 
         <div class="field">
-          <label for="printer_id">
-            <span class="label-text">Destination Printer</span>
-            <span class="label-hint">Choose where to send your message</span>
+          <label>
+            <span class="label-text">Destination Printer(s)</span>
+            <span class="label-hint">Select one or more printers</span>
           </label>
-          <div class="select-wrapper">
-            <select id="printer_id" name="printer_id" required>
-              <option value="">Loading printers…</option>
-            </select>
-            <svg class="select-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <div class="printer-checklist" id="printer-checklist">
+            <div class="printer-checklist-loading">Loading printers…</div>
           </div>
           <div id="printer-status" class="printer-status hidden"></div>
         </div>
@@ -358,9 +364,87 @@ image      = &lt;file&gt;</code></pre>
       </div>
     </section>
 
+
+    <!-- ── ADMIN TAB ──────────────────────────────────────────────────────── -->
+    <section class="tab-panel" id="tab-admin">
+
+      <!-- Login gate -->
+      <div id="admin-login-panel">
+        <div class="panel-header">
+          <h1>Admin</h1>
+          <p>Enter your admin password to manage printers and view message history.</p>
+        </div>
+        <form id="admin-login-form" style="max-width:400px">
+          <div class="field">
+            <label for="admin-password"><span class="label-text">Password</span></label>
+            <input type="password" id="admin-password" autocomplete="current-password" placeholder="Admin password" />
+          </div>
+          <button type="submit" class="btn btn-primary" id="admin-login-btn">Sign In</button>
+          <div id="admin-login-feedback" class="feedback hidden"></div>
+        </form>
+      </div>
+
+      <!-- Admin dashboard (shown after login) -->
+      <div id="admin-dashboard" class="hidden">
+        <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1>Admin Dashboard</h1>
+            <p>Manage printers and view message history.</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <div id="admin-global-stats" class="admin-stat-row"></div>
+            <button class="btn btn-outline btn-sm" id="admin-logout-btn">Sign Out</button>
+          </div>
+        </div>
+
+        <!-- Printers management -->
+        <div class="admin-section">
+          <div class="admin-section-header">
+            <h2>Printers</h2>
+            <button class="btn btn-outline btn-sm" id="admin-refresh-printers">↻ Refresh</button>
+          </div>
+          <div id="admin-printers-table" class="admin-table-wrap">
+            <div class="admin-loading">Loading…</div>
+          </div>
+        </div>
+
+        <!-- Message archive -->
+        <div class="admin-section">
+          <div class="admin-section-header">
+            <h2>Message History</h2>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <select id="admin-filter-printer" class="admin-filter-select">
+                <option value="">All Printers</option>
+              </select>
+              <button class="btn btn-outline btn-sm" id="admin-load-more">Load More</button>
+            </div>
+          </div>
+          <div id="admin-messages-table" class="admin-table-wrap">
+            <div class="admin-loading">Loading…</div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
   </main>
 
   <footer><span>PrintBridge &mdash; Open Source Print Server</span></footer>
+
+  <!-- Message body modal -->
+  <div id="msg-modal" class="msg-modal-overlay hidden" onclick="if(event.target===this)closeMsgModal()">
+    <div class="msg-modal-box">
+      <div class="msg-modal-header">
+        <span id="msg-modal-meta"></span>
+        <button onclick="closeMsgModal()" class="msg-modal-close">✕</button>
+      </div>
+      <pre id="msg-modal-body" class="msg-modal-body"></pre>
+      <div id="msg-modal-img" class="msg-modal-img hidden">
+        <img id="msg-modal-imgel" src="" alt="Message image" style="max-width:100%;border-radius:6px"/>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/app.js"></script>
 </body>
 </html>

@@ -9,6 +9,7 @@ const morgan   = require("morgan");
 const { apiLimiter }   = require("./middleware/rateLimiter");
 const messagesRouter   = require("./routes/messages");
 const printersRouter   = require("./routes/printers");
+const adminRouter         = require("./routes/admin");
 const { startSmtpServer } = require("./services/smtp");
 
 const app  = express();
@@ -47,6 +48,7 @@ app.use("/uploads", express.static(UPLOAD_DIR));
 app.use("/api", apiLimiter);
 app.use("/api/printers", printersRouter);
 app.use("/api/messages", messagesRouter);
+app.use("/api/admin",    adminRouter);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/health", (_req, res) => res.json({ status: "ok", ts: new Date().toISOString() }));

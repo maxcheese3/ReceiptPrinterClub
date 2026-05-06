@@ -17,9 +17,7 @@ const PRINTER_NAME    = process.env.PRINTER_NAME   || "";
 const PRINT_COLUMNS   = parseInt(process.env.PRINT_COLUMNS    || "22", 10);
 const PRINT_FONT_SIZE = parseInt(process.env.PRINT_FONT_SIZE  || "9",  10);
 
-const PS_TEXT   = path.join(__dirname, "print-text.ps1");
-const ARCHIVE_ENABLED = process.env.ARCHIVE_ENABLED !== "false";
-const ARCHIVE_DIR     = process.env.ARCHIVE_DIR || path.join(__dirname, "archive");
+const PS_TEXT  = path.join(__dirname, "print-text.ps1");
 const PS_IMAGE = path.join(__dirname, "print-image.ps1");
 
 if (!API_KEY) { console.error("[FATAL] API_KEY not set in .env"); process.exit(1); }
@@ -79,48 +77,6 @@ function runPowerShell(scriptPath, args = [], stdinText = null) {
     }
     ps.stdin.end();
   });
-}
-
-
-// ── Local archive ─────────────────────────────────────────────────────────────
-// Saves a copy of every message (text + image) to the local filesystem.
-// Archive structure: archive/YYYY-MM-DD/HH-MM-SS_<id8>_{text|image}.*
-async function archiveMessage(message, imageBuffer = null) {
-  if (!ARCHIVE_ENABLED) return;
-  try {
-    const d   = new Date(message.created_at + "Z");
-    const day = d.toISOString().slice(0, 10);                         // 2026-05-06
-    const hms = d.toISOString().slice(11, 19).replace(/:/g, "-");     // 14-30-22
-    const id8 = message.id.slice(0, 8);
-    const dir = path.join(ARCHIVE_DIR, day);
-    fs.mkdirSync(dir, { recursive: true });
-
-    const base = path.join(dir, `${hms}_${id8}`);
-
-    // Save metadata + body as a text file
-    const meta = [
-      `ID:      ${message.id}`,
-      `From:    ${message.sender_name  || "(none)"}`,
-      `Email:   ${message.sender_email || "(none)"}`,
-      `Source:  ${message.source}`,
-      `Time:    ${d.toLocaleString()}`,
-      `Printer: ${message.printer_id}`,
-      `Status:  ${message.status}`,
-      "",
-      message.body || "",
-    ].join("\n");
-    fs.writeFileSync(base + ".txt", meta, "utf8");
-
-    // Save image if present
-    if (imageBuffer) {
-      const ext  = (message.image_path || ".jpg").match(/\.[^.]+$/)?.[0] || ".jpg";
-      fs.writeFileSync(base + ext, imageBuffer);
-    }
-
-    log.debug(`[archive] Saved ${path.basename(base)}`);
-  } catch (err) {
-    log.warn("[archive] Failed to archive message:", err.message);
-  }
 }
 
 // ── Text helpers ──────────────────────────────────────────────────────────────
@@ -234,16 +190,12 @@ async function processMessage(message) {
       log.info("  ✓ Text printed");
     }
 
-    let imageBuf = null;
     if (message.image_path) {
-      imageBuf = await downloadBuffer(message.image_path);
-      // Archive before printing so we have a copy even if print fails
-      await archiveMessage(message, imageBuf);
+      // Print a small header above the image so recipient knows who sent it
       await printImageHeader(message);
-      await printImage(imageBuf);
+      const buf = await downloadBuffer(message.image_path);
+      await printImage(buf);
       log.info("  ✓ Image printed");
-    } else {
-      await archiveMessage(message, null);
     }
 
     await reportStatus(message.id, "printed");
@@ -280,7 +232,6 @@ log.info(`  Server:        ${SERVER_URL}`);
 log.info(`  Poll interval: ${POLL_MS}ms`);
 log.info(`  Printer:       ${PRINTER_NAME || "(Windows default)"}`);
 log.info(`  Columns:       ${PRINT_COLUMNS}  Font: ${PRINT_FONT_SIZE}pt`);
-log.info(`  Archive:       ${ARCHIVE_ENABLED ? ARCHIVE_DIR : "disabled"}`);
 
 poll();
 const interval = setInterval(poll, POLL_MS);

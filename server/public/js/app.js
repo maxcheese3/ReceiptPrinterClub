@@ -76,70 +76,93 @@ bodyTextarea.classList.add("word-wrap-on"); // default on
 document.fonts.ready.then(() => applyFontSize(parseInt(fontSizeSel.value, 10) || 9));
 setTimeout(() => applyFontSize(parseInt(fontSizeSel.value, 10) || 9), 150);
 
-/* ── Printer data ────────────────────────────────────────────────────────────── */
-const printerSelect = document.getElementById("printer_id");
-const printerStatus = document.getElementById("printer-status");
-const STORAGE_KEY   = "printbridge_last_printer";
-let printerMap      = {};
+/* ── Printer checklist (multi-select) ───────────────────────────────────────── */
+const printerChecklist = document.getElementById("printer-checklist");
+const printerStatus    = document.getElementById("printer-status");
+const STORAGE_KEY      = "printbridge_selected_printers"; // now stores array JSON
+let printerMap         = {};
 
-async function loadPrinters() {
-  try {
-    const res  = await fetch("/api/printers");
-    const data = await res.json();
-    printerSelect.innerHTML = "";
-    printerMap = {};
-    if (!data.printers || data.printers.length === 0) {
-      printerSelect.innerHTML = '<option value="">No printers registered yet</option>';
-      return;
-    }
-    const ph = document.createElement("option");
-    ph.value = ""; ph.textContent = "— Select a printer —";
-    printerSelect.appendChild(ph);
-    const lastId = localStorage.getItem(STORAGE_KEY);
-    data.printers.forEach((p) => {
-      printerMap[p.id] = p;
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = p.name + (p.location ? ` (${p.location})` : "");
-      printerSelect.appendChild(opt);
-    });
-    if (lastId && printerMap[lastId]) {
-      printerSelect.value = lastId;
-      onPrinterChanged();
-    }
-  } catch (err) {
-    console.error("loadPrinters error:", err);
-    printerSelect.innerHTML = '<option value="">Error loading printers</option>';
-  }
+function getSelectedIds() {
+  return [...printerChecklist.querySelectorAll("input[type=checkbox]:checked")]
+    .map(cb => cb.value);
 }
 
-function onPrinterChanged() {
-  const id = printerSelect.value;
-  if (id) localStorage.setItem(STORAGE_KEY, id);
-  const p = printerMap[id];
-  if (!p) {
+function saveSelection() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(getSelectedIds()));
+}
+
+function updatePrinterStatus() {
+  const ids = getSelectedIds();
+  if (ids.length === 0) {
     printerStatus.className = "printer-status hidden";
-    applyColumns(22);
     return;
   }
+  // Show status of first selected printer as representative
+  const p = printerMap[ids[0]];
+  if (!p) { printerStatus.className = "printer-status hidden"; return; }
   if (p.last_seen) {
     const diff    = Date.now() - new Date(p.last_seen + "Z").getTime();
     const minutes = Math.floor(diff / 60000);
     const online  = minutes < 5;
     const when    = minutes < 1 ? "just now" : minutes === 1 ? "1 min ago" : `${minutes} min ago`;
+    const label   = ids.length > 1 ? ` (+${ids.length - 1} more)` : "";
     printerStatus.className   = "printer-status " + (online ? "online" : "offline");
     printerStatus.textContent = (online ? "🟢 Online" : "⚫ Last seen " + when) +
-                                (p.description ? " — " + p.description : "");
+                                label + (p.description ? " — " + p.description : "");
   } else {
     printerStatus.className   = "printer-status offline";
     printerStatus.textContent = "⚫ Not yet connected" + (p.description ? " — " + p.description : "");
   }
-  // Apply the printer's font size — this always updates currentMaxCols via the lookup table
+  // Apply first selected printer's font size to the UI
   applyFontSize(p.font_size || 9);
 }
 
+async function loadPrinters() {
+  try {
+    const res  = await fetch("/api/printers");
+    const data = await res.json();
+    printerMap = {};
+    printerChecklist.innerHTML = "";
+
+    if (!data.printers || data.printers.length === 0) {
+      printerChecklist.innerHTML = '<div class="printer-checklist-loading">No printers registered yet</div>';
+      return;
+    }
+
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+
+    data.printers.forEach((p) => {
+      printerMap[p.id] = p;
+
+      const diff    = p.last_seen ? Date.now() - new Date(p.last_seen + "Z").getTime() : Infinity;
+      const minutes = Math.floor(diff / 60000);
+      const online  = minutes < 5;
+      const statusDot = online ? "🟢" : "⚫";
+      const when    = online ? "online" : minutes < 60 ? `${minutes}m ago` : "offline";
+
+      const item = document.createElement("label");
+      item.className = "printer-check-item";
+      item.title = [p.description, p.location].filter(Boolean).join(" · ") || p.name;
+      item.innerHTML = `
+        <input type="checkbox" value="${p.id}" ${saved.includes(p.id) ? "checked" : ""} />
+        <span class="printer-check-name">${p.name}</span>
+        <span class="printer-check-status">${statusDot}</span>
+      `;
+      item.querySelector("input").addEventListener("change", () => {
+        saveSelection();
+        updatePrinterStatus();
+      });
+      printerChecklist.appendChild(item);
+    });
+
+    updatePrinterStatus();
+  } catch (err) {
+    console.error("loadPrinters error:", err);
+    printerChecklist.innerHTML = '<div class="printer-checklist-loading">Error loading printers</div>';
+  }
+}
+
 loadPrinters();
-printerSelect.addEventListener("change", onPrinterChanged);
 
 /* ── Image handling ──────────────────────────────────────────────────────────── */
 let currentImageFile = null;
@@ -234,8 +257,8 @@ const feedback  = document.getElementById("form-feedback");
 sendForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   feedback.className = "feedback hidden";
-  const printer_id = printerSelect.value;
-  if (!printer_id) { showFeedback(feedback, "error", "Please select a printer."); return; }
+  const selectedIds = getSelectedIds();
+  if (selectedIds.length === 0) { showFeedback(feedback, "error", "Please select at least one printer."); return; }
   const body = bodyTextarea.value;
   if (!body.trim() && !currentImageFile) {
     showFeedback(feedback, "error", "Please enter a message or attach an image."); return;
@@ -243,23 +266,27 @@ sendForm.addEventListener("submit", async (e) => {
   submitBtn.disabled = true;
   submitBtn.innerHTML = '<span class="spinner"></span> Sending…';
   try {
-    const fd = new FormData();
-    fd.append("printer_id", printer_id);
     const name = document.getElementById("sender_name").value.trim();
-    if (name) fd.append("sender_name", name);
-    if (body) fd.append("body", body);
-    fd.append("word_wrap", wrapToggle.checked ? "1" : "0");
-    fd.append("font_size", fontSizeSel.value);
-    if (currentImageFile) fd.append("image", currentImageFile, currentImageFile.name);
-    const res  = await fetch("/api/messages", { method: "POST", body: fd });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      showFeedback(feedback, "success", `✓ Message sent! Printing shortly. (ID: ${data.message_id.slice(0, 8)}…)`);
+    const results = await Promise.all(selectedIds.map(async (printer_id) => {
+      const fd = new FormData();
+      fd.append("printer_id", printer_id);
+      if (name) fd.append("sender_name", name);
+      if (body) fd.append("body", body);
+      fd.append("word_wrap", wrapToggle.checked ? "1" : "0");
+      fd.append("font_size", fontSizeSel.value);
+      if (currentImageFile) fd.append("image", currentImageFile, currentImageFile.name);
+      const res  = await fetch("/api/messages", { method: "POST", body: fd });
+      return res.json();
+    }));
+    const allOk = results.every(d => d.success);
+    if (allOk) {
+      const label = selectedIds.length > 1 ? `${selectedIds.length} printers` : "printer";
+      showFeedback(feedback, "success", `✓ Sent to ${label}! Printing shortly.`);
       bodyTextarea.value = "";
-      document.getElementById("sender_name").value = "";
       clearImage(); updateStats();
     } else {
-      showFeedback(feedback, "error", data.error || "Something went wrong.");
+      const errs = results.filter(d => !d.success).map(d => d.error).join("; ");
+      showFeedback(feedback, "error", errs || "Some messages failed.");
     }
   } catch {
     showFeedback(feedback, "error", "Network error — could not reach the server.");
@@ -321,3 +348,311 @@ copyKeyBtn.addEventListener("click", () => {
 });
 
 function showFeedback(el, type, msg) { el.className = "feedback " + type; el.textContent = msg; }
+
+/* ── Theme picker ────────────────────────────────────────────────────────────── */
+const THEME_KEY = "printbridge_theme";
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem(THEME_KEY, theme);
+  document.querySelectorAll(".theme-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.theme === theme);
+  });
+}
+
+document.querySelectorAll(".theme-btn").forEach(btn => {
+  btn.addEventListener("click", () => applyTheme(btn.dataset.theme));
+});
+
+// Restore saved theme on load
+applyTheme(localStorage.getItem(THEME_KEY) || "dark");
+
+/* ── Admin UI ────────────────────────────────────────────────────────────────── */
+const ADMIN_TOKEN_KEY = "printbridge_admin_token";
+let adminToken        = sessionStorage.getItem(ADMIN_TOKEN_KEY) || null;
+let adminMsgOffset    = 0;
+const ADMIN_PAGE_SIZE = 50;
+
+function adminHeaders() {
+  return { "Content-Type": "application/json", "Authorization": `Bearer ${adminToken}` };
+}
+
+async function adminFetch(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: { ...adminHeaders(), ...(opts.headers || {}) } });
+  if (res.status === 401) { adminLogout(); throw new Error("Session expired — please log in again."); }
+  return res;
+}
+
+function adminLogout() {
+  adminToken = null;
+  sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+  document.getElementById("admin-login-panel").classList.remove("hidden");
+  document.getElementById("admin-dashboard").classList.add("hidden");
+}
+
+// Show/hide dashboard based on token
+function adminCheckSession() {
+  if (adminToken) {
+    document.getElementById("admin-login-panel").classList.add("hidden");
+    document.getElementById("admin-dashboard").classList.remove("hidden");
+    adminLoadDashboard();
+  }
+}
+
+// Login form
+document.getElementById("admin-login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fb  = document.getElementById("admin-login-feedback");
+  const pwd = document.getElementById("admin-password").value;
+  fb.className = "feedback hidden";
+  try {
+    const res  = await fetch("/api/admin/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pwd }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      adminToken = data.token;
+      sessionStorage.setItem(ADMIN_TOKEN_KEY, adminToken);
+      document.getElementById("admin-password").value = "";
+      adminCheckSession();
+    } else {
+      showFeedback(fb, "error", data.error || "Login failed.");
+    }
+  } catch {
+    showFeedback(fb, "error", "Network error.");
+  }
+});
+
+document.getElementById("admin-logout-btn").addEventListener("click", adminLogout);
+document.getElementById("admin-refresh-printers").addEventListener("click", adminLoadPrinters);
+
+async function adminLoadDashboard() {
+  await Promise.all([adminLoadStats(), adminLoadPrinters(), adminLoadMessages(true)]);
+}
+
+async function adminLoadStats() {
+  try {
+    const res  = await adminFetch("/api/admin/stats");
+    const data = await res.json();
+    const s    = data.stats;
+    document.getElementById("admin-global-stats").innerHTML =
+      `<span>Total: <strong>${s.total}</strong></span>
+       <span>Printed: <strong>${s.printed}</strong></span>
+       <span>Failed: <strong>${s.failed}</strong></span>
+       <span>Web: <strong>${s.from_web}</strong> · API: <strong>${s.from_api}</strong> · Email: <strong>${s.from_email}</strong></span>`;
+  } catch (err) { console.warn("stats:", err.message); }
+}
+
+async function adminLoadPrinters() {
+  const wrap = document.getElementById("admin-printers-table");
+  wrap.innerHTML = '<div class="admin-loading">Loading…</div>';
+  try {
+    const res     = await adminFetch("/api/admin/printers");
+    const data    = await res.json();
+    const printers = data.printers;
+
+    // Also populate the filter dropdown
+    const filterSel = document.getElementById("admin-filter-printer");
+    const prevVal   = filterSel.value;
+    filterSel.innerHTML = '<option value="">All Printers</option>';
+    printers.forEach(p => {
+      const o = document.createElement("option");
+      o.value = p.id; o.textContent = p.name;
+      filterSel.appendChild(o);
+    });
+    filterSel.value = prevVal;
+
+    if (!printers.length) {
+      wrap.innerHTML = '<div class="admin-loading">No printers registered.</div>'; return;
+    }
+
+    const table = document.createElement("table");
+    table.className = "admin-table";
+    table.innerHTML = `<thead><tr>
+      <th>Name</th><th>Description</th><th>Location</th>
+      <th>Cols</th><th>Font</th><th>Status</th><th>Last Seen</th><th>Actions</th>
+    </tr></thead>`;
+    const tbody = document.createElement("tbody");
+
+    printers.forEach(p => {
+      const tr = document.createElement("tr");
+      if (!p.active) tr.className = "inactive";
+      const lastSeen = p.last_seen
+        ? (() => { const m = Math.floor((Date.now() - new Date(p.last_seen+"Z").getTime())/60000);
+            return m < 1 ? "just now" : m < 60 ? `${m}m ago` : `${Math.floor(m/60)}h ago`; })()
+        : "never";
+
+      tr.innerHTML = `
+        <td><input class="admin-inline-input" data-field="name" value="${escHtml(p.name)}" style="min-width:120px"/></td>
+        <td><input class="admin-inline-input" data-field="description" value="${escHtml(p.description||"")}" style="min-width:120px"/></td>
+        <td><input class="admin-inline-input" data-field="location" value="${escHtml(p.location||"")}" style="min-width:100px"/></td>
+        <td><input class="admin-inline-input" data-field="columns" type="number" value="${p.columns}" style="width:60px;min-width:60px"/></td>
+        <td><select class="admin-inline-select" data-field="font_size">
+          ${[7,8,9,10,11,12,14].map(s => `<option value="${s}" ${p.font_size==s?"selected":""}>${s}pt</option>`).join("")}
+        </select></td>
+        <td><span class="status-badge ${p.active ? "status-printed" : "status-failed"}">${p.active ? "Active" : "Inactive"}</span></td>
+        <td style="color:var(--fg-muted);white-space:nowrap">${lastSeen}</td>
+        <td class="admin-actions">
+          <button class="btn btn-sm btn-save" data-id="${p.id}">Save</button>
+          <button class="btn btn-sm btn-toggle" data-id="${p.id}" data-active="${p.active}">${p.active ? "Deactivate" : "Activate"}</button>
+          <button class="btn btn-sm btn-danger" data-id="${p.id}" data-name="${escHtml(p.name)}">Delete</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    wrap.innerHTML = "";
+    wrap.appendChild(table);
+
+    // Wire up buttons
+    wrap.querySelectorAll(".btn-save").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const row  = btn.closest("tr");
+        const id   = btn.dataset.id;
+        const body = {};
+        row.querySelectorAll("[data-field]").forEach(el => {
+          body[el.dataset.field] = el.tagName === "SELECT" ? el.value : el.value;
+        });
+        btn.textContent = "…";
+        try {
+          const res = await adminFetch(`/api/admin/printers/${id}`, {
+            method: "PATCH", body: JSON.stringify(body)
+          });
+          const d = await res.json();
+          if (d.success) { btn.textContent = "✓"; setTimeout(() => { btn.textContent = "Save"; }, 1500); loadPrinters(); }
+          else { btn.textContent = "Save"; alert(d.error); }
+        } catch { btn.textContent = "Save"; }
+      });
+    });
+
+    wrap.querySelectorAll(".btn-toggle").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id     = btn.dataset.id;
+        const active = btn.dataset.active === "1" ? 0 : 1;
+        try {
+          await adminFetch(`/api/admin/printers/${id}`, {
+            method: "PATCH", body: JSON.stringify({ active })
+          });
+          adminLoadPrinters(); loadPrinters();
+        } catch (err) { alert(err.message); }
+      });
+    });
+
+    wrap.querySelectorAll(".btn-danger").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm(`Permanently delete "${btn.dataset.name}" and ALL its messages? This cannot be undone.`)) return;
+        try {
+          await adminFetch(`/api/admin/printers/${btn.dataset.id}`, { method: "DELETE" });
+          adminLoadPrinters(); loadPrinters();
+        } catch (err) { alert(err.message); }
+      });
+    });
+
+  } catch (err) {
+    wrap.innerHTML = `<div class="admin-loading" style="color:var(--error)">${err.message}</div>`;
+  }
+}
+
+async function adminLoadMessages(reset = false) {
+  if (reset) adminMsgOffset = 0;
+  const wrap      = document.getElementById("admin-messages-table");
+  const printerId = document.getElementById("admin-filter-printer").value;
+  const url       = `/api/admin/messages?limit=${ADMIN_PAGE_SIZE}&offset=${adminMsgOffset}` +
+                    (printerId ? `&printer_id=${printerId}` : "");
+
+  if (reset) wrap.innerHTML = '<div class="admin-loading">Loading…</div>';
+
+  try {
+    const res  = await adminFetch(url);
+    const data = await res.json();
+    const msgs = data.messages;
+
+    if (reset) wrap.innerHTML = "";
+
+    if (!msgs.length && reset) {
+      wrap.innerHTML = '<div class="admin-loading">No messages found.</div>'; return;
+    }
+    if (!msgs.length) return;
+
+    let table = wrap.querySelector("table.admin-table");
+    if (!table) {
+      table = document.createElement("table");
+      table.className = "admin-table";
+      table.innerHTML = `<thead><tr>
+        <th>Time</th><th>Printer</th><th>From</th><th>Source</th>
+        <th>Body</th><th>Image</th><th>Status</th>
+      </tr></thead>`;
+      table.appendChild(document.createElement("tbody"));
+      wrap.appendChild(table);
+    }
+    const tbody = table.querySelector("tbody");
+
+    msgs.forEach(m => {
+      const tr = document.createElement("tr");
+      const t  = new Date(m.created_at + "Z").toLocaleString();
+      const imgCell = m.image_path
+        ? `<img class="msg-image-thumb" src="/uploads/${m.image_path}" alt="img"
+             onclick="window.open('/uploads/${m.image_path}')" />`
+        : "—";
+      tr.innerHTML = `
+        <td style="white-space:nowrap;font-size:11px">${t}</td>
+        <td style="white-space:nowrap">${escHtml(m.printer_name || m.printer_id.slice(0,8))}</td>
+        <td style="white-space:nowrap">${escHtml(m.sender_name || "—")}</td>
+        <td style="text-transform:capitalize;white-space:nowrap">${m.source}</td>
+        <td><div class="msg-body-preview" data-msg-id="${m.id}">${escHtml((m.body||"").slice(0,80) || "—")}</div></td>
+        <td style="white-space:nowrap">${imgCell}</td>
+        <td style="white-space:nowrap"><span class="status-badge status-${m.status}">${m.status}</span></td>`;
+      // Store message data on the element so the click handler can access it
+      tr.querySelector(".msg-body-preview")._msgData = m;
+      tr.querySelector(".msg-body-preview").addEventListener("click", function() {
+        openMsgModal(this._msgData);
+      });
+      tbody.appendChild(tr);
+    });
+
+    adminMsgOffset += msgs.length;
+  } catch (err) {
+    if (reset) wrap.innerHTML = `<div class="admin-loading" style="color:var(--error)">${err.message}</div>`;
+  }
+}
+
+document.getElementById("admin-load-more").addEventListener("click", () => adminLoadMessages(false));
+document.getElementById("admin-filter-printer").addEventListener("change", () => adminLoadMessages(true));
+
+/* ── Message modal ───────────────────────────────────────────────────────────── */
+function openMsgModal(m) {
+  document.getElementById("msg-modal-meta").textContent =
+    `${new Date(m.created_at + "Z").toLocaleString()}  ·  ${m.printer_name || m.printer_id.slice(0,8)}  ·  From: ${m.sender_name || "(unknown)"}  ·  ${m.source}`;
+  document.getElementById("msg-modal-body").textContent = m.body || "(no text body)";
+  const imgEl  = document.getElementById("msg-modal-imgel");
+  const imgDiv = document.getElementById("msg-modal-img");
+  if (m.image_path) {
+    imgEl.src = `/uploads/${m.image_path}`;
+    imgDiv.classList.remove("hidden");
+  } else {
+    imgDiv.classList.add("hidden");
+    imgEl.src = "";
+  }
+  document.getElementById("msg-modal").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+function closeMsgModal() {
+  document.getElementById("msg-modal").classList.add("hidden");
+  document.body.style.overflow = "";
+}
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMsgModal(); });
+
+function escHtml(str) {
+  return String(str || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// Check session when Admin tab is clicked
+document.querySelectorAll(".nav-tab").forEach(tab => {
+  if (tab.dataset.tab === "admin") {
+    tab.addEventListener("click", adminCheckSession);
+  }
+});
+
+// Auto-restore session on page load if already on admin tab
+if (adminToken) adminCheckSession();

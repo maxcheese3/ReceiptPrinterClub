@@ -21,6 +21,8 @@ services:
       - UPLOAD_DIR=/app/data/uploads
       - RATE_LIMIT_WINDOW_MS=60000
       - TRUST_PROXY=1
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+      - ADMIN_TOKEN_SECRET=${ADMIN_TOKEN_SECRET:-}
     networks:
       - internal
 

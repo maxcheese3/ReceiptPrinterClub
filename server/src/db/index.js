@@ -149,10 +149,58 @@ function getStats(printer_id) {
   ).get(printer_id);
 }
 
+
+function updatePrinter(id, fields) {
+  getDb().prepare(
+    `UPDATE printers
+     SET name = @name, description = @description, location = @location,
+         columns = @columns, font_size = @font_size, active = @active
+     WHERE id = @id`
+  ).run({ ...fields, id });
+}
+
+function hardDeletePrinter(id) {
+  const db = getDb();
+  db.prepare(`DELETE FROM messages WHERE printer_id = ?`).run(id);
+  db.prepare(`DELETE FROM printers WHERE id = ?`).run(id);
+}
+
+function getAllMessages({ limit = 100, offset = 0, printer_id = null }) {
+  const db = getDb();
+  if (printer_id) {
+    return db.prepare(
+      `SELECT m.*, p.name as printer_name FROM messages m
+       JOIN printers p ON p.id = m.printer_id
+       WHERE m.printer_id = ?
+       ORDER BY m.created_at DESC LIMIT ? OFFSET ?`
+    ).all(printer_id, limit, offset);
+  }
+  return db.prepare(
+    `SELECT m.*, p.name as printer_name FROM messages m
+     JOIN printers p ON p.id = m.printer_id
+     ORDER BY m.created_at DESC LIMIT ? OFFSET ?`
+  ).all(limit, offset);
+}
+
+function getGlobalStats() {
+  return getDb().prepare(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(CASE WHEN status='pending'  THEN 1 ELSE 0 END) AS pending,
+       SUM(CASE WHEN status='printed'  THEN 1 ELSE 0 END) AS printed,
+       SUM(CASE WHEN status='failed'   THEN 1 ELSE 0 END) AS failed,
+       SUM(CASE WHEN source='web'      THEN 1 ELSE 0 END) AS from_web,
+       SUM(CASE WHEN source='email'    THEN 1 ELSE 0 END) AS from_email,
+       SUM(CASE WHEN source='api'      THEN 1 ELSE 0 END) AS from_api
+     FROM messages`
+  ).get();
+}
+
 module.exports = {
   getDb,
   listPrinters, getPrinterById, getPrinterByApiKey,
   createPrinter, updatePrinterLastSeen, deactivatePrinter,
   createMessage, getMessageById, getPendingMessages,
   getRecentMessages, setMessageStatus, getStats,
+  updatePrinter, hardDeletePrinter, getAllMessages, getGlobalStats,
 };
