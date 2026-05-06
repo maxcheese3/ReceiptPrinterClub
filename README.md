@@ -76,7 +76,7 @@ Edit `.env`:
 SERVER_URL=http://your-docker-host:3000
 API_KEY=paste-your-api-key-here
 ```
-You will need to allow script execution and install dotenv:
+You will need to allow script execution via Powersheel and install dotenv:
 ```powershell
 Set-ExecutionPolicy Unrestricted -Scope CurrentUser
 npm install dotenv
