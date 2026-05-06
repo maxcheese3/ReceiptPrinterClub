@@ -36,10 +36,22 @@ function updateStats() {
   charCountEl.textContent = [...text].length;
 }
 
+// Exact column counts measured on the physical printer (Lucida Console Bold)
+const FONT_SIZE_COLS = { 7: 31, 8: 27, 9: 24, 10: 22, 11: 20, 12: 18, 14: 15 };
+
+function colsForFontSize(pt) {
+  return FONT_SIZE_COLS[pt] || Math.round(24 * 9 / pt);
+}
+
 function applyFontSize(pt) {
-  fontSizeSel.value = pt;
-  // Scale textarea display size so it gives a realistic width preview
+  fontSizeSel.value = String(pt);
+  // Scale textarea display font so width feels proportional
   bodyTextarea.style.fontSize = Math.round(pt * 96 / 72) + "px";
+  // Only update column count if no printer is selected (printer overrides)
+  const id = (typeof printerSelect !== "undefined") ? printerSelect.value : "";
+  if (!id || !printerMap[id]) {
+    currentMaxCols = colsForFontSize(pt);
+  }
   updateStats();
 }
 
@@ -50,11 +62,6 @@ function applyColumns(cols) {
 
 fontSizeSel.addEventListener("change", () => {
   const pt = parseInt(fontSizeSel.value, 10) || 9;
-  const id = typeof printerSelect !== "undefined" ? printerSelect.value : "";
-  if (!id || !printerMap[id]) {
-    // No printer selected — derive column count from base 22 cols at 9pt
-    currentMaxCols = Math.round(22 * 9 / pt);
-  }
   applyFontSize(pt);
 });
 
@@ -131,8 +138,16 @@ function onPrinterChanged() {
     printerStatus.className   = "printer-status offline";
     printerStatus.textContent = "⚫ Not yet connected" + (p.description ? " — " + p.description : "");
   }
-  if (p.font_size) applyFontSize(p.font_size);
-  if (p.columns)   applyColumns(p.columns);
+  // Apply printer's default font size, then derive columns from measured table.
+  // The stored p.columns value was set at registration time and may be stale
+  // if the user changes font size — so always derive from the font size map.
+  const pt = p.font_size || 9;
+  applyFontSize(pt);
+  // Use stored columns only as an override if it differs from what we'd calculate
+  // (i.e. the printer has a wider/narrower paper than the default 58mm)
+  if (p.columns && p.columns !== colsForFontSize(pt)) {
+    applyColumns(p.columns);
+  }
 }
 
 loadPrinters();

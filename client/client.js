@@ -112,13 +112,11 @@ function wordWrap(text, maxCols) {
 
 function buildHeader(message) {
   const SEP  = "=".repeat(PRINT_COLUMNS);
-  const SEP2 = "-".repeat(PRINT_COLUMNS);
-  const lines = [];// [SEP, "  PrintBridge Message", SEP];
-  if (message.sender_name)  lines.push("From:     " + message.sender_name);
+  const lines = [SEP];
+  if (message.sender_name)  lines.push("From: " + message.sender_name);
   if (message.sender_email) lines.push("Email:    " + message.sender_email);
-  lines.push("Received: " + new Date(message.created_at + "Z").toLocaleString());
-  lines.push("Via:      " + message.source);
-  lines.push(SEP2);
+  lines.push("Time: " + new Date(message.created_at + "Z").toLocaleString());
+  lines.push(SEP);
   return lines;
 }
 
@@ -144,7 +142,7 @@ function buildImageHeader(message) {
   if (message.sender_name) {
     lines.push("From: " + message.sender_name);
   }
-  lines.push(new Date(message.created_at + "Z").toLocaleString());
+  lines.push("Time: " + new Date(message.created_at + "Z").toLocaleString());
   lines.push("-".repeat(PRINT_COLUMNS));
   return lines.join("\r\n");
 }

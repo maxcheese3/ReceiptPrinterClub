@@ -201,10 +201,11 @@ router.post(
   async (req, res) => {
     try {
       const {
-        printer_id, sender_name, sender_email, body, word_wrap, font_size,
+        printer_id, sender_email, body, word_wrap, font_size,
         image_url, image_headers,
         oauth_token_url, oauth_client_id, oauth_client_secret,
       } = req.body;
+      let sender_name = req.body.sender_name;
 
       console.log(`[messages] POST printer_id=${printer_id} image_url=${image_url || "(none)"} oauth=${oauth_token_url ? "yes" : "no"}`);
 
@@ -222,6 +223,14 @@ router.post(
       if (authHeader) {
         const keyPrinter = db.getPrinterByApiKey(authHeader);
         if (keyPrinter) source = "api";
+      }
+
+      // For web submissions with no sender name, fall back to client IP
+      if (source === "web" && !sender_name) {
+        const forwarded = req.headers["x-forwarded-for"];
+        sender_name = forwarded
+          ? forwarded.split(",")[0].trim()
+          : (req.ip || req.socket.remoteAddress || "Unknown");
       }
 
       // Build headers for the image fetch
