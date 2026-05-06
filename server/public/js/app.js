@@ -37,7 +37,7 @@ function updateStats() {
 }
 
 // Exact column counts measured on the physical printer (Lucida Console Bold)
-const FONT_SIZE_COLS = { 7: 31, 8: 27, 9: 24, 10: 22, 11: 20, 12: 18, 14: 15 };
+const FONT_SIZE_COLS = { 7: 31, 8: 27, 9: 24, 10: 22, 11: 20, 12: 18, 14: 16 };
 
 function colsForFontSize(pt) {
   return FONT_SIZE_COLS[pt] || Math.round(24 * 9 / pt);
@@ -45,13 +45,9 @@ function colsForFontSize(pt) {
 
 function applyFontSize(pt) {
   fontSizeSel.value = String(pt);
-  // Scale textarea display font so width feels proportional
   bodyTextarea.style.fontSize = Math.round(pt * 96 / 72) + "px";
-  // Only update column count if no printer is selected (printer overrides)
-  const id = (typeof printerSelect !== "undefined") ? printerSelect.value : "";
-  if (!id || !printerMap[id]) {
-    currentMaxCols = colsForFontSize(pt);
-  }
+  // Always derive columns from the font size lookup table
+  currentMaxCols = colsForFontSize(pt);
   updateStats();
 }
 
@@ -138,16 +134,8 @@ function onPrinterChanged() {
     printerStatus.className   = "printer-status offline";
     printerStatus.textContent = "⚫ Not yet connected" + (p.description ? " — " + p.description : "");
   }
-  // Apply printer's default font size, then derive columns from measured table.
-  // The stored p.columns value was set at registration time and may be stale
-  // if the user changes font size — so always derive from the font size map.
-  const pt = p.font_size || 9;
-  applyFontSize(pt);
-  // Use stored columns only as an override if it differs from what we'd calculate
-  // (i.e. the printer has a wider/narrower paper than the default 58mm)
-  if (p.columns && p.columns !== colsForFontSize(pt)) {
-    applyColumns(p.columns);
-  }
+  // Apply the printer's font size — this always updates currentMaxCols via the lookup table
+  applyFontSize(p.font_size || 9);
 }
 
 loadPrinters();

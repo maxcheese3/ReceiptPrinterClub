@@ -113,9 +113,9 @@ function wordWrap(text, maxCols) {
 function buildHeader(message) {
   const SEP  = "=".repeat(PRINT_COLUMNS);
   const lines = [SEP];
-  if (message.sender_name)  lines.push("From: " + message.sender_name);
+  if (message.sender_name)  lines.push("From:     " + message.sender_name);
   if (message.sender_email) lines.push("Email:    " + message.sender_email);
-  lines.push("Time: " + new Date(message.created_at + "Z").toLocaleString());
+  lines.push("Received: " + new Date(message.created_at + "Z").toLocaleString());
   lines.push(SEP);
   return lines;
 }

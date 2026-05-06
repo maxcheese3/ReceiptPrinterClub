@@ -47,7 +47,7 @@ $_g.Dispose(); $_bmp.Dispose()
 $_lineMultiplier = [float]0.72
 
 function Is-Meta($line) {
-  return $line -match "^(From:|Email:|Received:|Via:|={3,}|-{3,})"
+  return $line -match "^(From:|Email:|Received:|Time:|Via:|={3,}|-{3,})"
 }
 
 $lineIndex = 0
