@@ -857,17 +857,21 @@ footer a:hover { text-decoration: underline; }
   grid-column: 1 / -1;
 }
 .printer-check-item {
-  display: flex;
+  display: flex !important;
+  flex-direction: row !important;
   align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
+  gap: 7px;
+  padding: 5px 8px;
   border-radius: calc(var(--radius) - 2px);
+  border: 1px solid var(--border);
   cursor: pointer;
-  transition: background 0.12s;
+  transition: background 0.12s, border-color 0.12s;
   user-select: none;
   min-width: 0;
+  white-space: nowrap;
 }
-.printer-check-item:hover { background: var(--bg-card); }
+.printer-check-item { background: var(--bg-card); }
+.printer-check-item:hover { background: var(--accent-glow); border-color: var(--accent); }
 .printer-check-item input[type="checkbox"] {
   width: 14px;
   height: 14px;
@@ -1293,3 +1297,4 @@ footer a:hover { text-decoration: underline; }
   background: var(--accent);
   color: #fff;
 }
+

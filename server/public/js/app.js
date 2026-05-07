@@ -471,7 +471,7 @@ async function adminLoadPrinters() {
     table.className = "admin-table";
     table.innerHTML = `<thead><tr>
       <th>Name</th><th>Description</th><th>Location</th>
-      <th>Cols</th><th>Font</th><th>Status</th><th>Last Seen</th><th>Actions</th>
+      <th>Cols</th><th>Font</th><th>Status</th><th>Visible</th><th>Last Seen</th><th>Actions</th>
     </tr></thead>`;
     const tbody = document.createElement("tbody");
 
@@ -492,10 +492,12 @@ async function adminLoadPrinters() {
           ${[7,8,9,10,11,12,14].map(s => `<option value="${s}" ${p.font_size==s?"selected":""}>${s}pt</option>`).join("")}
         </select></td>
         <td><span class="status-badge ${p.active ? "status-printed" : "status-failed"}">${p.active ? "Active" : "Inactive"}</span></td>
+        <td><span class="status-badge ${p.hidden ? "status-failed" : "status-printed"}">${p.hidden ? "Hidden" : "Visible"}</span></td>
         <td style="color:var(--fg-muted);white-space:nowrap">${lastSeen}</td>
         <td class="admin-actions">
           <button class="btn btn-sm btn-save" data-id="${p.id}">Save</button>
           <button class="btn btn-sm btn-toggle" data-id="${p.id}" data-active="${p.active}">${p.active ? "Deactivate" : "Activate"}</button>
+          <button class="btn btn-sm btn-hide" data-id="${p.id}" data-hidden="${p.hidden}">${p.hidden ? "Unhide" : "Hide"}</button>
           <button class="btn btn-sm btn-danger" data-id="${p.id}" data-name="${escHtml(p.name)}">Delete</button>
         </td>`;
       tbody.appendChild(tr);
@@ -533,6 +535,19 @@ async function adminLoadPrinters() {
         try {
           await adminFetch(`/api/admin/printers/${id}`, {
             method: "PATCH", body: JSON.stringify({ active })
+          });
+          adminLoadPrinters(); loadPrinters();
+        } catch (err) { alert(err.message); }
+      });
+    });
+
+    wrap.querySelectorAll(".btn-hide").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id     = btn.dataset.id;
+        const hidden = btn.dataset.hidden === "1" ? 0 : 1;
+        try {
+          await adminFetch(`/api/admin/printers/${id}`, {
+            method: "PATCH", body: JSON.stringify({ hidden })
           });
           adminLoadPrinters(); loadPrinters();
         } catch (err) { alert(err.message); }

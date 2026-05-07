@@ -7,6 +7,22 @@ const os        = require("os");
 const { spawn } = require("child_process");
 const Jimp      = require("jimp");
 
+// ── OS detection ──────────────────────────────────────────────────────────────
+const IS_WINDOWS = process.platform === "win32";
+const IS_LINUX   = process.platform === "linux" || process.platform === "darwin";
+
+// Load Linux print module only on Linux/macOS (canvas may not be installed on Windows)
+let linuxPrint = null;
+if (IS_LINUX) {
+  try {
+    linuxPrint = require("./print-linux");
+  } catch (err) {
+    console.error("[FATAL] Linux print module failed to load:", err.message);
+    console.error("Run: npm install canvas");
+    process.exit(1);
+  }
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 const SERVER_URL      = (process.env.SERVER_URL || "http://localhost:3000").replace(/\/$/, "");
 const API_KEY         = process.env.API_KEY;
@@ -27,7 +43,7 @@ fs.mkdirSync(TEMP_DIR, { recursive: true });
 
 // ── Logger ────────────────────────────────────────────────────────────────────
 const LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
-const lvl = LEVELS[LOG_LEVEL] ?? 1;
+const lvl = LEVELS[LOG_LEVEL] !== undefined ? LEVELS[LOG_LEVEL] : 1;
 const log = {
   debug: (...a) => lvl <= 0 && console.debug(ts(), "[DEBUG]", ...a),
   info:  (...a) => lvl <= 1 && console.info (ts(), "[INFO] ", ...a),
@@ -189,34 +205,97 @@ function buildImageHeader(message) {
   return lines.join("\r\n");
 }
 
-// ── Print functions ───────────────────────────────────────────────────────────
+// ── Floyd-Steinberg dithering ─────────────────────────────────────────────────
+// Converts image to grayscale then dithers to 1-bit-equivalent black/white pixels.
+// Returns a Jimp image with only pure black (0x000000ff) and white (0xffffffff) pixels.
+// Used by both Windows and Linux paths for consistent output quality.
+async function ditherImage(imageBuffer, printWidthPx) {
+  const img = await Jimp.read(imageBuffer);
+
+  // Scale to printer width maintaining aspect ratio
+  img.resize(printWidthPx, Jimp.AUTO);
+  img.greyscale();
+
+  const w = img.getWidth();
+  const h = img.getHeight();
+
+  // Copy luma values into a float buffer for error diffusion
+  const gray = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const c = Jimp.intToRGBA(img.getPixelColor(x, y));
+      gray[y * w + x] = c.r; // already greyscale so r=g=b
+    }
+  }
+
+  // Floyd-Steinberg error diffusion
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      const old = gray[idx];
+      const nw  = old < 128 ? 0 : 255;
+      gray[idx] = nw;
+      const err = old - nw;
+      if (x + 1 < w)              gray[idx + 1]         += err * 7 / 16;
+      if (y + 1 < h && x > 0)     gray[idx + w - 1]     += err * 3 / 16;
+      if (y + 1 < h)              gray[idx + w]          += err * 5 / 16;
+      if (y + 1 < h && x + 1 < w) gray[idx + w + 1]     += err * 1 / 16;
+    }
+  }
+
+  // Write dithered values back into the Jimp image
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const v = gray[y * w + x] < 128 ? 0 : 255;
+      img.setPixelColor(Jimp.rgbaToInt(v, v, v, 255), x, y);
+    }
+  }
+
+  return img;
+}
+
+// ── Print functions — dispatch to Windows (GDI/PowerShell) or Linux (CUPS) ────
 async function printText(message, doWordWrap) {
   const payload  = buildTextPayload(message, doWordWrap);
   const fontSize = message.font_size || PRINT_FONT_SIZE;
-  const args = ["-FontSize", String(fontSize)];
-  if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
-  await runPowerShell(PS_TEXT, args, payload);
+
+  if (IS_WINDOWS) {
+    const args = ["-FontSize", String(fontSize)];
+    if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
+    await runPowerShell(PS_TEXT, args, payload);
+  } else {
+    await linuxPrint.printText(payload, fontSize, TEMP_DIR);
+  }
 }
 
 async function printImageHeader(message) {
   if (!message.sender_name && !message.created_at) return;
   const payload  = buildImageHeader(message);
   const fontSize = message.font_size || PRINT_FONT_SIZE;
-  const args = ["-FontSize", String(fontSize)];
-  if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
-  await runPowerShell(PS_TEXT, args, payload);
+
+  if (IS_WINDOWS) {
+    const args = ["-FontSize", String(fontSize)];
+    if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
+    await runPowerShell(PS_TEXT, args, payload);
+  } else {
+    await linuxPrint.printText(payload, fontSize, TEMP_DIR);
+  }
 }
 
 async function printImage(imageBuffer) {
-  const img     = await Jimp.read(imageBuffer);
-  const tmpFile = path.join(TEMP_DIR, `img-${Date.now()}.bmp`);
-  await img.writeAsync(tmpFile);
-  try {
-    const args = ["-ImagePath", tmpFile];
-    if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
-    await runPowerShell(PS_IMAGE, args);
-  } finally {
-    try { fs.unlinkSync(tmpFile); } catch {}
+  if (IS_WINDOWS) {
+    const img     = await Jimp.read(imageBuffer);
+    const tmpFile = path.join(TEMP_DIR, `img-${Date.now()}.bmp`);
+    await img.writeAsync(tmpFile);
+    try {
+      const args = ["-ImagePath", tmpFile];
+      if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
+      await runPowerShell(PS_IMAGE, args);
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch {}
+    }
+  } else {
+    await linuxPrint.printImage(imageBuffer, TEMP_DIR);
   }
 }
 
@@ -276,6 +355,7 @@ async function poll() {
 }
 
 log.info("PrintBridge Client starting…");
+log.info(`  Platform:      ${IS_WINDOWS ? "Windows (GDI/PowerShell)" : "Linux/macOS (CUPS)"}`);
 log.info(`  Server:        ${SERVER_URL}`);
 log.info(`  Poll interval: ${POLL_MS}ms`);
 log.info(`  Printer:       ${PRINTER_NAME || "(Windows default)"}`);

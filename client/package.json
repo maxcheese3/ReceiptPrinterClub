@@ -1,7 +1,7 @@
 {
   "name": "printbridge-client",
   "version": "1.0.0",
-  "description": "PrintBridge Windows Print Client",
+  "description": "PrintBridge Print Client (Windows + Linux)",
   "main": "client.js",
   "scripts": {
     "start": "node client.js",
@@ -12,5 +12,8 @@
     "dotenv": "^16.4.5",
     "jimp": "^0.22.12",
     "node-windows": "^1.0.0-beta.8"
+  },
+  "optionalDependencies": {
+    "canvas": "^2.11.2"
   }
 }

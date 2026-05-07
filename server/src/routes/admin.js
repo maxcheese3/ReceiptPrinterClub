@@ -102,7 +102,7 @@ router.patch("/printers/:id", requireAuth, (req, res) => {
   const printer = db.getPrinterById(req.params.id);
   if (!printer) return res.status(404).json({ error: "Printer not found" });
 
-  const { name, description, location, columns, font_size, active } = req.body;
+  const { name, description, location, columns, font_size, active, hidden } = req.body;
 
   if (name && name.trim() !== printer.name) {
     const dup = db.listPrinters(false).find(p => p.name === name.trim() && p.id !== printer.id);
@@ -116,6 +116,7 @@ router.patch("/printers/:id", requireAuth, (req, res) => {
     columns:     columns     !== undefined ? Math.max(10, Math.min(200, parseInt(columns, 10))) : printer.columns,
     font_size:   font_size   !== undefined ? Math.max(6,  Math.min(72,  parseInt(font_size, 10))): printer.font_size,
     active:      active      !== undefined ? (active ? 1 : 0)                                   : printer.active,
+    hidden:      hidden      !== undefined ? (hidden ? 1 : 0)                                   : (printer.hidden || 0),
   });
 
   return res.json({ success: true, printer: db.getPrinterById(req.params.id) });

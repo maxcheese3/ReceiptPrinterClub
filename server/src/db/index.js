@@ -29,6 +29,7 @@ function initSchema() {
       location    TEXT,
       api_key     TEXT NOT NULL UNIQUE,
       active      INTEGER NOT NULL DEFAULT 1,
+      hidden      INTEGER NOT NULL DEFAULT 0,
       columns     INTEGER NOT NULL DEFAULT 22,
       font_size   INTEGER NOT NULL DEFAULT 9,
       created_at  TEXT NOT NULL DEFAULT (datetime('now')),
@@ -63,6 +64,8 @@ function initSchema() {
   const msgCols = db.prepare("PRAGMA table_info(messages)").all().map(r => r.name);
   if (!msgCols.includes("word_wrap")) db.exec("ALTER TABLE messages ADD COLUMN word_wrap INTEGER NOT NULL DEFAULT 1");
   if (!msgCols.includes("font_size")) db.exec("ALTER TABLE messages ADD COLUMN font_size INTEGER");
+  const pCols = db.prepare("PRAGMA table_info(printers)").all().map(r => r.name);
+  if (!pCols.includes("hidden")) db.exec("ALTER TABLE printers ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0");
 }
 
 // ── Printers ──────────────────────────────────────────────────────────────────
@@ -70,8 +73,8 @@ function initSchema() {
 function listPrinters(activeOnly = true) {
   const db = getDb();
   const sql = activeOnly
-    ? `SELECT id, name, description, location, columns, font_size, created_at, last_seen FROM printers WHERE active = 1 ORDER BY name`
-    : `SELECT id, name, description, location, active, api_key, columns, font_size, created_at, last_seen FROM printers ORDER BY name`;
+    ? `SELECT id, name, description, location, columns, font_size, created_at, last_seen FROM printers WHERE active = 1 AND hidden = 0 ORDER BY name`
+    : `SELECT id, name, description, location, active, hidden, api_key, columns, font_size, created_at, last_seen FROM printers ORDER BY name`;
   return db.prepare(sql).all();
 }
 
@@ -154,7 +157,7 @@ function updatePrinter(id, fields) {
   getDb().prepare(
     `UPDATE printers
      SET name = @name, description = @description, location = @location,
-         columns = @columns, font_size = @font_size, active = @active
+         columns = @columns, font_size = @font_size, active = @active, hidden = @hidden
      WHERE id = @id`
   ).run({ ...fields, id });
 }
