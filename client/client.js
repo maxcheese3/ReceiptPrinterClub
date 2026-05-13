@@ -30,7 +30,14 @@ const POLL_MS         = parseInt(process.env.POLL_INTERVAL_MS  || "5000", 10);
 const TEMP_DIR        = process.env.TEMP_DIR || path.join(os.tmpdir(), "printbridge");
 const LOG_LEVEL       = process.env.LOG_LEVEL || "info";
 const PRINTER_NAME    = process.env.PRINTER_NAME   || "";
-const PRINT_COLUMNS   = parseInt(process.env.PRINT_COLUMNS    || "22", 10);
+const PRINT_COLUMNS   = parseInt(process.env.PRINT_COLUMNS    || "24", 10);
+
+// Same column lookup table as the web UI — maps font size (pt) to chars per line.
+// Used so word wrap matches what the user saw in the browser at each font size.
+const FONT_SIZE_COLS = { 7: 31, 8: 27, 9: 24, 10: 22, 11: 20, 12: 18, 14: 16 };
+function colsForFontSize(pt) {
+  return FONT_SIZE_COLS[pt] || Math.round(24 * 9 / pt);
+}
 const PRINT_FONT_SIZE = parseInt(process.env.PRINT_FONT_SIZE  || "9",  10);
 
 const PS_TEXT   = path.join(__dirname, "print-text.ps1");
@@ -184,7 +191,12 @@ function buildTextPayload(message, doWordWrap) {
   const lines = buildHeader(message);
   if (message.body && message.body.trim()) {
     if (doWordWrap) {
-      lines.push(...wordWrap(message.body, PRINT_COLUMNS));
+      // Use the font size stored with this message to get the correct column count.
+      // Falls back to PRINT_COLUMNS env var if no font size is stored.
+      const wrapCols = message.font_size
+        ? colsForFontSize(message.font_size)
+        : PRINT_COLUMNS;
+      lines.push(...wordWrap(message.body, wrapCols));
     } else {
       // No wrap — pass through as-is (user laid it out themselves)
       lines.push(...message.body.split("\n"));

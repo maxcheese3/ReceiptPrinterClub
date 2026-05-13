@@ -8,3 +8,6 @@ data/
 uploads/
 *.log
 daemon/
+archive/
+client_office/
+printbridge.zip

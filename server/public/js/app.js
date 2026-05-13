@@ -46,9 +46,8 @@ function colsForFontSize(pt) {
 function applyFontSize(pt) {
   fontSizeSel.value = String(pt);
   bodyTextarea.style.fontSize = Math.round(pt * 96 / 72) + "px";
-  // Always derive columns from the font size lookup table
-  currentMaxCols = colsForFontSize(pt);
-  updateStats();
+  // Recalculate columns based on selected printers + chosen font size
+  recalcColumns();
 }
 
 function applyColumns(cols) {
@@ -56,9 +55,38 @@ function applyColumns(cols) {
   updateStats();
 }
 
+// Recalculate the column limit based on selected printers and current font size.
+// - If printers are selected: use their stored column values (min across all selected)
+//   scaled to the current font size relative to their registered font size.
+//   Actually simpler: use p.columns directly since that was measured at that printer's
+//   font size — if user changes font size, derive from FONT_SIZE_COLS.
+// - If no printer selected: derive from font size table.
+function recalcColumns() {
+  const pt  = parseInt(fontSizeSel.value, 10) || 9;
+  const ids = getSelectedIds();
+  if (ids.length === 0) {
+    currentMaxCols = colsForFontSize(pt);
+  } else {
+    // Get column count for each selected printer at the current font size.
+    // If the printer's registered font size matches current, use p.columns directly.
+    // Otherwise scale using the lookup table.
+    const cols = ids.map(id => {
+      const p = printerMap[id];
+      if (!p) return colsForFontSize(pt);
+      // Use printer's stored columns if font size matches, else use lookup table
+      if ((p.font_size || 9) === pt) return p.columns || colsForFontSize(pt);
+      return colsForFontSize(pt);
+    });
+    currentMaxCols = Math.min(...cols);
+  }
+  updateStats();
+}
+
 fontSizeSel.addEventListener("change", () => {
   const pt = parseInt(fontSizeSel.value, 10) || 9;
-  applyFontSize(pt);
+  bodyTextarea.style.fontSize = Math.round(pt * 96 / 72) + "px";
+  fontSizeSel.value = String(pt);
+  recalcColumns();
 });
 
 bodyTextarea.addEventListener("input",   updateStats);
@@ -97,13 +125,12 @@ function updatePrinterStatus() {
     printerStatus.className = "printer-status hidden";
     return;
   }
-  // Show status of first selected printer as representative
   const p = printerMap[ids[0]];
   if (!p) { printerStatus.className = "printer-status hidden"; return; }
   if (p.last_seen) {
     const diff    = Date.now() - new Date(p.last_seen + "Z").getTime();
     const minutes = Math.floor(diff / 60000);
-    const online  = minutes < 5;
+    const online  = minutes < 6;
     const when    = minutes < 1 ? "just now" : minutes === 1 ? "1 min ago" : `${minutes} min ago`;
     const label   = ids.length > 1 ? ` (+${ids.length - 1} more)` : "";
     printerStatus.className   = "printer-status " + (online ? "online" : "offline");
@@ -113,8 +140,6 @@ function updatePrinterStatus() {
     printerStatus.className   = "printer-status offline";
     printerStatus.textContent = "⚫ Not yet connected" + (p.description ? " — " + p.description : "");
   }
-  // Apply first selected printer's font size to the UI
-  applyFontSize(p.font_size || 9);
 }
 
 async function loadPrinters() {
@@ -134,11 +159,7 @@ async function loadPrinters() {
     data.printers.forEach((p) => {
       printerMap[p.id] = p;
 
-      const diff    = p.last_seen ? Date.now() - new Date(p.last_seen + "Z").getTime() : Infinity;
-      const minutes = Math.floor(diff / 60000);
-      const online  = minutes < 5;
-      const statusDot = online ? "🟢" : "⚫";
-      const when    = online ? "online" : minutes < 60 ? `${minutes}m ago` : "offline";
+      // Status dot is rendered live by the timer below
 
       const item = document.createElement("label");
       item.className = "printer-check-item";
@@ -146,11 +167,13 @@ async function loadPrinters() {
       item.innerHTML = `
         <input type="checkbox" value="${p.id}" ${saved.includes(p.id) ? "checked" : ""} />
         <span class="printer-check-name">${p.name}</span>
-        <span class="printer-check-status">${statusDot}</span>
+        <span class="printer-check-status" data-printer-id="${p.id}"></span>
       `;
       item.querySelector("input").addEventListener("change", () => {
         saveSelection();
         updatePrinterStatus();
+        recalcColumns();
+        updateSendButtonLabel();
       });
       printerChecklist.appendChild(item);
     });
@@ -163,6 +186,45 @@ async function loadPrinters() {
 }
 
 loadPrinters();
+
+// ── Printer status dot refresh ────────────────────────────────────────────────
+// Reads last_seen from printerMap (kept fresh by silentRefreshPrinters).
+// Runs every 10s and also immediately after loadPrinters populates printerMap.
+function refreshPrinterStatusDots() {
+  document.querySelectorAll(".printer-check-status[data-printer-id]").forEach(el => {
+    const p = printerMap[el.dataset.printerId];
+    if (!p || !p.last_seen) { el.textContent = "⚫"; return; }
+    const diff    = Date.now() - new Date(p.last_seen + "Z").getTime();
+    const minutes = Math.floor(diff / 60000);
+    const online  = minutes < 6;
+    el.textContent = online ? "🟢" : "⚫";
+    el.title = online ? "Online" : minutes < 60 ? `Last seen ${minutes}m ago` : "Offline";
+  });
+  updatePrinterStatus();
+}
+
+// Fetch fresh last_seen values from server and update printerMap
+async function silentRefreshPrinters() {
+  try {
+    const res  = await fetch("/api/printers");
+    const data = await res.json();
+    if (!data.printers) return;
+    data.printers.forEach(p => {
+      if (printerMap[p.id]) printerMap[p.id].last_seen = p.last_seen;
+    });
+    refreshPrinterStatusDots();
+  } catch {}
+}
+
+// Run immediately (after loadPrinters resolves) and on a 10s interval
+// The immediate call is triggered inside loadPrinters() at the end
+setInterval(refreshPrinterStatusDots, 10000);
+setInterval(silentRefreshPrinters, 10000);
+// Also run silentRefresh immediately once page is ready (no 10s wait)
+silentRefreshPrinters();
+
+
+
 
 /* ── Image handling ──────────────────────────────────────────────────────────── */
 let currentImageFile = null;
@@ -259,12 +321,14 @@ sendForm.addEventListener("submit", async (e) => {
   feedback.className = "feedback hidden";
   const selectedIds = getSelectedIds();
   if (selectedIds.length === 0) { showFeedback(feedback, "error", "Please select at least one printer."); return; }
+  // Update button label based on count
+  const multi = selectedIds.length > 1;
   const body = bodyTextarea.value;
   if (!body.trim() && !currentImageFile) {
     showFeedback(feedback, "error", "Please enter a message or attach an image."); return;
   }
   submitBtn.disabled = true;
-  submitBtn.innerHTML = '<span class="spinner"></span> Sending…';
+  submitBtn.innerHTML = `<span class="spinner"></span> Sending…`;
   try {
     const name = document.getElementById("sender_name").value.trim();
     const results = await Promise.all(selectedIds.map(async (printer_id) => {
@@ -282,6 +346,7 @@ sendForm.addEventListener("submit", async (e) => {
     if (allOk) {
       const label = selectedIds.length > 1 ? `${selectedIds.length} printers` : "printer";
       showFeedback(feedback, "success", `✓ Sent to ${label}! Printing shortly.`);
+      submitBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="none"><path d="M3 10l14-7-7 14V10H3z" fill="currentColor"/></svg> ${multi ? "Send to Printers" : "Send to Printer"}`;
       bodyTextarea.value = "";
       clearImage(); updateStats();
     } else {
@@ -292,7 +357,7 @@ sendForm.addEventListener("submit", async (e) => {
     showFeedback(feedback, "error", "Network error — could not reach the server.");
   } finally {
     submitBtn.disabled = false;
-    submitBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="none"><path d="M3 10l14-7-7 14V10H3z" fill="currentColor"/></svg> Send to Printer`;
+    submitBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="none"><path d="M3 10l14-7-7 14V10H3z" fill="currentColor"/></svg> ${multi ? "Send to Printers" : "Send to Printer"}`;
   }
 });
 
@@ -305,26 +370,37 @@ const apiKeyValue  = document.getElementById("api-key-value");
 const printerIdVal = document.getElementById("printer-id-value");
 const copyKeyBtn   = document.getElementById("copy-key-btn");
 
+// Paper width radio → hidden inputs
+const PAPER_COLS = { "58": 24, "80": 36 };
+document.querySelectorAll('input[name="reg-paper-width"]').forEach(radio => {
+  radio.addEventListener("change", () => {
+    document.getElementById("reg-columns").value = PAPER_COLS[radio.value] || 24;
+  });
+});
+
 regForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   regFeedback.className = "feedback hidden";
   apiKeyBox.classList.add("hidden");
   regBtn.disabled = true; regBtn.textContent = "Registering…";
   try {
-    const fs   = parseInt(document.getElementById("reg-font-size").value, 10) || 9;
-    const cols = parseInt(document.getElementById("reg-columns").value, 10)   || 22;
+    const cols = parseInt(document.getElementById("reg-columns").value, 10) || 24;
     const res  = await fetch("/api/printers", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name:        document.getElementById("reg-name").value.trim(),
         description: document.getElementById("reg-desc").value.trim()     || undefined,
         location:    document.getElementById("reg-location").value.trim() || undefined,
-        font_size: fs, columns: cols,
+        font_size:   9,
+        columns:     cols,
       }),
     });
     const data = await res.json();
     if (res.ok && data.success) {
       regForm.reset();
+      // Re-check 58mm default after reset
+      document.getElementById("reg-paper-58").checked = true;
+      document.getElementById("reg-columns").value = 24;
       apiKeyValue.textContent  = data.api_key;
       printerIdVal.textContent = data.printer.id;
       apiKeyBox.classList.remove("hidden");
@@ -346,6 +422,11 @@ copyKeyBtn.addEventListener("click", () => {
     setTimeout(() => (copyKeyBtn.textContent = "Copy"), 2000);
   });
 });
+
+function updateSendButtonLabel() {
+  const count = getSelectedIds().length;
+  submitBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="none"><path d="M3 10l14-7-7 14V10H3z" fill="currentColor"/></svg> ${count > 1 ? "Send to Printers" : "Send to Printer"}`;
+}
 
 function showFeedback(el, type, msg) { el.className = "feedback " + type; el.textContent = msg; }
 
@@ -522,7 +603,8 @@ async function adminLoadPrinters() {
             method: "PATCH", body: JSON.stringify(body)
           });
           const d = await res.json();
-          if (d.success) { btn.textContent = "✓"; setTimeout(() => { btn.textContent = "Save"; }, 1500); loadPrinters(); }
+          if (d.success) { btn.textContent = "✓"; setTimeout(() => { btn.textContent = "Save"; }, 1500); loadPrinters();
+ }
           else { btn.textContent = "Save"; alert(d.error); }
         } catch { btn.textContent = "Save"; }
       });
@@ -656,6 +738,12 @@ function closeMsgModal() {
   document.getElementById("msg-modal").classList.add("hidden");
   document.body.style.overflow = "";
 }
+// Wire close button (using id, not inline onclick which can fail in some contexts)
+document.getElementById("msg-modal-close-btn").addEventListener("click", closeMsgModal);
+// Close on backdrop click
+document.getElementById("msg-modal").addEventListener("click", function(e) {
+  if (e.target === this) closeMsgModal();
+});
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMsgModal(); });
 
 function escHtml(str) {

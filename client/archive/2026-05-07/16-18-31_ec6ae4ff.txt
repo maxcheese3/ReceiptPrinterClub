@@ -1,9 +1,0 @@
-ID:      ec6ae4ff-3f53-454d-b787-4ad459fc536d
-From:    Garde Of Eden - MO
-Email:   (none)
-Source:  web
-Time:    5/7/2026, 9:18:31 AM
-Printer: b65550ed-897e-4796-b2b5-ae59efdafe96
-Status:  pending
-
-I could ask him to.  I should update the client to work with Linux too though before I ask.  I have shown him tho

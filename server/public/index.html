@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700&family=Nunito:wght@400;600;700;800&family=Quicksand:wght@400;500;600;700&family=Press+Start+2P&family=Share+Tech+Mono&family=Cabin:wght@400;600;700&family=Oswald:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖨️</text></svg>" />
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
@@ -24,20 +25,8 @@
         </svg>
         <span>ReceiptPrinterClub</span>
       </div>
-      <nav>
-        <button class="nav-tab active" data-tab="send">Send Message</button>
-        <button class="nav-tab" data-tab="register">Register Printer</button>
-        <button class="nav-tab" data-tab="api">API Docs</button>
-        <button class="nav-tab" data-tab="admin">⚙ Admin</button>
-      </nav>
-      <div class="theme-picker" id="theme-picker">
-        <button class="theme-btn active" data-theme="dark" title="Dark Mode">🌑</button>
-        <button class="theme-btn" data-theme="light" title="Light Mode">☀️</button>
-        <button class="theme-btn" data-theme="rush" title="Premium Rush">🚲</button>
-        <button class="theme-btn" data-theme="beans" title="Beans">🫘</button>
-        <button class="theme-btn" data-theme="shrek" title="Shrek">🧅</button>
-        <button class="theme-btn" data-theme="transit" title="Public Transit">🚌</button>
-      </div>
+
+
     </div>
   </header>
 
@@ -157,7 +146,6 @@
     <section class="tab-panel" id="tab-register">
       <div class="panel-header">
         <h1>Register a Printer</h1>
-        <p>Configure the paper width so the web UI enforces the correct column limit for each printer.</p>
       </div>
       <form id="register-form">
         <div class="field">
@@ -172,42 +160,36 @@
           <label for="reg-location"><span class="label-text">Location</span><span class="label-hint"> Optional</span></label>
           <input type="text" id="reg-location" placeholder="2nd Floor, East Wing" maxlength="100" />
         </div>
-        <div class="field-row">
-          <div class="field">
-            <label for="reg-font-size">
-              <span class="label-text">Print Font Size</span>
-              <span class="label-hint">Points</span>
-            </label>
-            <select id="reg-font-size">
-              <option value="7">7pt</option>
-              <option value="8">8pt</option>
-              <option value="9" selected>9pt</option>
-              <option value="10">10pt</option>
-              <option value="11">11pt</option>
-              <option value="12">12pt</option>
-              <option value="14">14pt</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="reg-columns">
-              <span class="label-text">Chars Per Line</span>
-              <span class="label-hint">Print a test &amp; count</span>
-            </label>
-            <input type="number" id="reg-columns" min="10" max="200" placeholder="22" />
-          </div>
-        </div>
-        <!-- Live ruler preview using a readonly textarea so font matches exactly -->
         <div class="field">
-          <label><span class="label-text">Column Width Preview</span><span class="label-hint"> — this is how wide one line will be</span></label>
-          <textarea id="reg-ruler-preview" rows="1" readonly tabindex="-1"
-            style="font-family:'Courier New',monospace;resize:none;color:var(--fg-dim);cursor:default;"></textarea>
+          <label for="reg-paper-width">
+            <span class="label-text">Paper Width</span>
+          </label>
+          <div class="paper-width-options">
+            <label class="paper-width-option">
+              <input type="radio" name="reg-paper-width" id="reg-paper-58" value="58" checked />
+              <span class="paper-width-label">
+                <strong>58 mm</strong>
+                <span class="paper-width-hint">24 columns at 9pt · set <code>PRINT_COLUMNS=24</code> in client .env</span>
+              </span>
+            </label>
+            <label class="paper-width-option">
+              <input type="radio" name="reg-paper-width" id="reg-paper-80" value="80" />
+              <span class="paper-width-label">
+                <strong>80 mm</strong>
+                <span class="paper-width-hint">36 columns at 9pt · set <code>PRINT_COLUMNS=36</code> in client .env</span>
+              </span>
+            </label>
+          </div>
         </div>
+        <!-- Hidden inputs carry the actual values submitted -->
+        <input type="hidden" id="reg-font-size" value="9" />
+        <input type="hidden" id="reg-columns" value="24" />
         <button type="submit" class="btn btn-primary" id="register-btn">Register Printer</button>
         <div id="register-feedback" class="feedback hidden"></div>
       </form>
       <div id="api-key-box" class="api-key-box hidden">
         <h2>🎉 Printer Registered!</h2>
-        <p>Save your API key now — it won't be shown again.</p>
+        <p>Save your API key — it won't be shown again.</p>
         <div class="api-key-row">
           <code id="api-key-value"></code>
           <button class="btn btn-sm" id="copy-key-btn">Copy</button>
@@ -216,9 +198,9 @@
         <div class="next-steps">
           <strong>Next steps:</strong>
           <ol>
-            <li>Copy the <code>client/</code> folder to your Windows machine.</li>
+            <li>Copy the <code>client/</code> folder to your machine.</li>
             <li>Run <code>npm install</code> inside it.</li>
-            <li>Copy <code>.env.example</code> → <code>.env</code> and set your API key, server URL, <code>PRINT_FONT_SIZE</code>, and <code>PRINT_COLUMNS</code>.</li>
+            <li>Copy <code>.env.example</code> → <code>.env</code>, set your API key, server URL, and <code>PRINT_COLUMNS</code> to match your paper width above.</li>
             <li>Run <code>node client.js</code>.</li>
           </ol>
         </div>
@@ -429,14 +411,29 @@ image      = &lt;file&gt;</code></pre>
 
   </main>
 
-  <footer><span>PrintBridge &mdash; Open Source Print Server</span></footer>
+  <footer>
+    <nav id="footer-nav">
+      <button class="nav-tab active" data-tab="send">Send Message</button>
+      <button class="nav-tab" data-tab="register">Register Printer</button>
+      <button class="nav-tab" data-tab="api">API Docs</button>
+      <button class="nav-tab" data-tab="admin">⚙ Admin</button>
+    </nav>
+    <div class="theme-picker" id="theme-picker">
+      <button class="theme-btn active" data-theme="dark" title="Dark Mode">🌑</button>
+      <button class="theme-btn" data-theme="light" title="Light Mode">☀️</button>
+      <button class="theme-btn" data-theme="rush" title="Premium Rush">🚲</button>
+      <button class="theme-btn" data-theme="beans" title="Beans">🫘</button>
+      <button class="theme-btn" data-theme="shrek" title="Shrek">🧅</button>
+      <button class="theme-btn" data-theme="transit" title="Public Transit">🚌</button>
+    </div>
+  </footer>
 
   <!-- Message body modal -->
-  <div id="msg-modal" class="msg-modal-overlay hidden" onclick="if(event.target===this)closeMsgModal()">
+  <div id="msg-modal" class="msg-modal-overlay hidden">
     <div class="msg-modal-box">
       <div class="msg-modal-header">
         <span id="msg-modal-meta"></span>
-        <button onclick="closeMsgModal()" class="msg-modal-close">✕</button>
+        <button id="msg-modal-close-btn" class="msg-modal-close">✕</button>
       </div>
       <pre id="msg-modal-body" class="msg-modal-body"></pre>
       <div id="msg-modal-img" class="msg-modal-img hidden">
