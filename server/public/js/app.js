@@ -430,6 +430,15 @@ function updateSendButtonLabel() {
 
 function showFeedback(el, type, msg) { el.className = "feedback " + type; el.textContent = msg; }
 
+/* ── Logo click → Send Message ───────────────────────────────────────────────── */
+document.querySelector(".logo").style.cursor = "pointer";
+document.querySelector(".logo").addEventListener("click", () => {
+  document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  document.querySelector(".nav-tab[data-tab='send']").classList.add("active");
+  document.getElementById("tab-send").classList.add("active");
+});
+
 /* ── Theme picker ────────────────────────────────────────────────────────────── */
 const THEME_KEY = "printbridge_theme";
 
@@ -759,3 +768,468 @@ document.querySelectorAll(".nav-tab").forEach(tab => {
 
 // Auto-restore session on page load if already on admin tab
 if (adminToken) adminCheckSession();
+
+/* ── Subscription Admin UI ───────────────────────────────────────────────────── */
+const SUB_KEY_STORAGE = "printbridge_sub_api_key";
+let subApiKey = null;
+let subPrinterId = null;
+
+function subAuthHeaders() {
+  return { "Content-Type": "application/json", "X-API-Key": subApiKey };
+}
+
+async function subFetch(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { ...subAuthHeaders(), ...(opts.headers || {}) },
+  });
+  if (res.status === 401 || res.status === 403) {
+    subLogout();
+    throw new Error("Session expired — please sign in again.");
+  }
+  return res;
+}
+
+function subLogout() {
+  subApiKey = null;
+  subPrinterId = null;
+  sessionStorage.removeItem(SUB_KEY_STORAGE);
+  document.getElementById("sub-login-panel").classList.remove("hidden");
+  document.getElementById("sub-dashboard").classList.add("hidden");
+}
+
+document.getElementById("sub-logout-btn").addEventListener("click", subLogout);
+
+document.getElementById("sub-login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fb  = document.getElementById("sub-login-feedback");
+  const key = document.getElementById("sub-api-key").value.trim();
+  fb.className = "feedback hidden";
+  if (!key) { showFeedback(fb, "error", "Please enter your API key."); return; }
+  try {
+    // Validate by fetching subscriptions
+    const res  = await fetch("/api/subscriptions", { headers: { "X-API-Key": key } });
+    if (res.status === 401 || res.status === 403) {
+      showFeedback(fb, "error", "Invalid API key."); return;
+    }
+    const data = await res.json();
+    subApiKey = key;
+    sessionStorage.setItem(SUB_KEY_STORAGE, key);
+    // Find printer name
+    const printerRes  = await fetch("/api/printers");
+    const printerData = await printerRes.json();
+    // We don't know which printer from key alone — find by polling subs response
+    // The server doesn't return printer info, so look it up by matching
+    document.getElementById("sub-api-key").value = "";
+    subShowDashboard(data.subscriptions || []);
+  } catch (err) {
+    showFeedback(fb, "error", err.message || "Network error.");
+  }
+});
+
+function subShowDashboard(subs) {
+  document.getElementById("sub-login-panel").classList.add("hidden");
+  document.getElementById("sub-dashboard").classList.remove("hidden");
+  renderSubList(subs);
+}
+
+function subTypeLabel(type) {
+  if (type === "xkcd") return '<span class="sub-badge sub-badge-xkcd">XKCD</span>';
+  return '<span class="sub-badge sub-badge-rss">RSS</span>';
+}
+
+function renderSubList(subs) {
+  const wrap = document.getElementById("sub-list");
+  if (!subs.length) {
+    wrap.innerHTML = '<div class="admin-loading">No subscriptions yet. Add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = "";
+  subs.forEach(sub => {
+    const div = document.createElement("div");
+    div.className = "sub-item";
+    const checkedStr = sub.last_checked
+      ? `Last checked: ${new Date(sub.last_checked + "Z").toLocaleString()}`
+      : "Never checked";
+    const activeLabel = sub.active
+      ? '<span class="sub-badge sub-badge-active">Active</span>'
+      : '<span class="sub-badge sub-badge-paused">Paused</span>';
+    div.innerHTML = `
+      <div class="sub-item-info">
+        <div class="sub-item-name">${escHtml(sub.name)} ${subTypeLabel(sub.feed_type)} ${activeLabel}</div>
+        <div class="sub-item-url">${escHtml(sub.feed_url)}</div>
+        <div class="sub-item-meta">${checkedStr}${sub.last_item_id ? " · Last: " + escHtml(sub.last_item_id.slice(0, 40)) : ""}</div>
+      </div>
+      <div class="sub-item-actions">
+        <button class="btn btn-sm btn-toggle" data-id="${sub.id}" data-active="${sub.active}">${sub.active ? "Pause" : "Resume"}</button>
+        <button class="btn btn-sm btn-save" data-id="${sub.id}" title="Fetch latest now">↻ Fetch</button>
+        <button class="btn btn-sm btn-danger" data-id="${sub.id}" data-name="${escHtml(sub.name)}">Delete</button>
+      </div>`;
+
+    div.querySelector(".btn-toggle").addEventListener("click", async (e) => {
+      const active = e.target.dataset.active === "1" ? 0 : 1;
+      await subFetch(`/api/subscriptions/${sub.id}`, { method: "PATCH", body: JSON.stringify({ active }) });
+      subLoadSubs();
+    });
+
+    div.querySelector(".btn-save").addEventListener("click", async (e) => {
+      e.target.textContent = "…";
+      try {
+        await subFetch(`/api/subscriptions/${sub.id}/poll`, { method: "POST" });
+        e.target.textContent = "✓";
+        setTimeout(() => { e.target.textContent = "↻ Fetch"; subLoadSubs(); }, 2000);
+      } catch { e.target.textContent = "↻ Fetch"; }
+    });
+
+    div.querySelector(".btn-danger").addEventListener("click", async (e) => {
+      if (!confirm(`Delete subscription "${e.target.dataset.name}"?`)) return;
+      await subFetch(`/api/subscriptions/${sub.id}`, { method: "DELETE" });
+      subLoadSubs();
+    });
+
+    wrap.appendChild(div);
+  });
+}
+
+async function subLoadSubs() {
+  try {
+    const res  = await subFetch("/api/subscriptions");
+    const data = await res.json();
+    renderSubList(data.subscriptions || []);
+  } catch {}
+}
+
+document.getElementById("sub-refresh-btn").addEventListener("click", subLoadSubs);
+
+document.getElementById("sub-add-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fb   = document.getElementById("sub-add-feedback");
+  const name = document.getElementById("sub-name").value.trim();
+  const url  = document.getElementById("sub-url").value.trim();
+  fb.className = "feedback hidden";
+  if (!name) { showFeedback(fb, "error", "Please enter a name."); return; }
+  if (!url)  { showFeedback(fb, "error", "Please enter a feed URL."); return; }
+  const btn = document.getElementById("sub-add-btn");
+  btn.disabled = true; btn.textContent = "Adding…";
+  try {
+    const res  = await subFetch("/api/subscriptions", { method: "POST", body: JSON.stringify({ name, feed_url: url }) });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      document.getElementById("sub-name").value = "";
+      document.getElementById("sub-url").value  = "";
+      showFeedback(fb, "success", `✓ "${name}" added! It will be checked within 15 minutes, or click ↻ Fetch.`);
+      subLoadSubs();
+    } else {
+      showFeedback(fb, "error", data.error || "Failed to add subscription.");
+    }
+  } catch (err) {
+    showFeedback(fb, "error", err.message || "Network error.");
+  } finally {
+    btn.disabled = false; btn.textContent = "Add Feed";
+  }
+});
+
+// Restore session on tab switch
+document.querySelectorAll(".nav-tab").forEach(tab => {
+  if (tab.dataset.tab === "subscriptions") {
+    tab.addEventListener("click", () => {
+      const saved = sessionStorage.getItem(SUB_KEY_STORAGE);
+      if (saved && !subApiKey) {
+        subApiKey = saved;
+        subLoadSubs().then(() => {
+          document.getElementById("sub-login-panel").classList.add("hidden");
+          document.getElementById("sub-dashboard").classList.remove("hidden");
+        }).catch(() => { subApiKey = null; });
+      }
+    });
+  }
+});
+
+/* ── Printer Admin UI ────────────────────────────────────────────────────────── */
+const PA_KEY_STORAGE = "printbridge_pa_api_key";
+let paApiKey  = null;
+let paMsgOffset = 0;
+const PA_PAGE = 50;
+
+function paHeaders() {
+  return { "Content-Type": "application/json", "X-API-Key": paApiKey };
+}
+
+async function paFetch(url, opts = {}) {
+  const res = await fetch(url, { ...opts, headers: { ...paHeaders(), ...(opts.headers || {}) } });
+  if (res.status === 401 || res.status === 403) { paLogout(); throw new Error("Session expired."); }
+  return res;
+}
+
+function paLogout() {
+  paApiKey = null;
+  sessionStorage.removeItem(PA_KEY_STORAGE);
+  document.getElementById("pa-login-panel").classList.remove("hidden");
+  document.getElementById("pa-dashboard").classList.add("hidden");
+}
+
+document.getElementById("pa-logout-btn").addEventListener("click", paLogout);
+
+// ── Login ─────────────────────────────────────────────────────────────────────
+document.getElementById("pa-login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fb  = document.getElementById("pa-login-feedback");
+  const key = document.getElementById("pa-api-key").value.trim();
+  fb.className = "feedback hidden";
+  if (!key) { showFeedback(fb, "error", "Please enter your API key."); return; }
+  const btn = document.getElementById("pa-login-btn");
+  btn.disabled = true; btn.textContent = "Signing in…";
+  try {
+    const res  = await fetch("/api/printer-admin/me", { headers: { "X-API-Key": key, "Content-Type": "application/json" } });
+    if (res.status === 401 || res.status === 403) { showFeedback(fb, "error", "Invalid API key."); return; }
+    const data = await res.json();
+    paApiKey = key;
+    sessionStorage.setItem(PA_KEY_STORAGE, key);
+    document.getElementById("pa-api-key").value = "";
+    paShowDashboard(data.printer, data.stats);
+  } catch (err) {
+    showFeedback(fb, "error", err.message || "Network error.");
+  } finally {
+    btn.disabled = false; btn.textContent = "Sign In";
+  }
+});
+
+function paShowDashboard(printer, stats) {
+  document.getElementById("pa-login-panel").classList.add("hidden");
+  document.getElementById("pa-dashboard").classList.remove("hidden");
+
+  // Fill header
+  document.getElementById("pa-printer-name").textContent = printer.name;
+  const metaParts = [];
+  if (printer.location)    metaParts.push(printer.location);
+  if (printer.description) metaParts.push(printer.description);
+  if (stats) metaParts.push(`${stats.total} messages · ${stats.printed} printed`);
+  document.getElementById("pa-printer-meta").textContent = metaParts.join(" · ");
+
+  // Fill settings form
+  document.getElementById("pa-name").value        = printer.name        || "";
+  document.getElementById("pa-description").value = printer.description || "";
+  document.getElementById("pa-location").value    = printer.location    || "";
+  document.getElementById("pa-columns").value     = printer.columns     || 24;
+
+  // Load messages
+  paMsgOffset = 0;
+  paLoadAllMessages(true);
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+document.getElementById("pa-settings-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fb  = document.getElementById("pa-settings-feedback");
+  const btn = document.getElementById("pa-save-btn");
+  btn.disabled = true; btn.textContent = "Saving…";
+  fb.className = "feedback hidden";
+  try {
+    const res  = await paFetch("/api/printer-admin/me", {
+      method: "PATCH",
+      body: JSON.stringify({
+        name:        document.getElementById("pa-name").value.trim(),
+        description: document.getElementById("pa-description").value.trim(),
+        location:    document.getElementById("pa-location").value.trim(),
+        columns:     parseInt(document.getElementById("pa-columns").value, 10) || 24,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      document.getElementById("pa-printer-name").textContent = data.printer.name;
+      showFeedback(fb, "success", "✓ Saved");
+      loadPrinters(); // refresh main printer list
+    } else {
+      showFeedback(fb, "error", data.error || "Save failed.");
+    }
+  } catch (err) { showFeedback(fb, "error", err.message); }
+  finally { btn.disabled = false; btn.textContent = "Save Settings"; }
+});
+
+// ── View toggle ───────────────────────────────────────────────────────────────
+let paCurrentView = "all";
+document.getElementById("pa-view-all").addEventListener("click", () => {
+  paCurrentView = "all";
+  document.getElementById("pa-view-all").classList.add("active");
+  document.getElementById("pa-view-threads").classList.remove("active");
+  document.getElementById("pa-all-view").classList.remove("hidden");
+  document.getElementById("pa-threads-view").classList.add("hidden");
+  document.getElementById("pa-load-more-btn").style.display = "";
+  paMsgOffset = 0;
+  paLoadAllMessages(true);
+});
+
+document.getElementById("pa-view-threads").addEventListener("click", () => {
+  paCurrentView = "threads";
+  document.getElementById("pa-view-threads").classList.add("active");
+  document.getElementById("pa-view-all").classList.remove("active");
+  document.getElementById("pa-threads-view").classList.remove("hidden");
+  document.getElementById("pa-all-view").classList.add("hidden");
+  document.getElementById("pa-load-more-btn").style.display = "none";
+  // Always reset to thread list (not detail) and reload
+  document.getElementById("pa-thread-list").classList.remove("hidden");
+  document.getElementById("pa-thread-detail").classList.add("hidden");
+  paLoadThreads();
+});
+
+document.getElementById("pa-load-more-btn").addEventListener("click", () => paLoadAllMessages(false));
+
+// ── Message rendering ─────────────────────────────────────────────────────────
+function paFormatTime(isoStr) {
+  const d = new Date(isoStr + "Z");
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function paStatusClass(status) {
+  return { printed: "status-printed", failed: "status-failed", pending: "status-pending", printing: "status-printing" }[status] || "";
+}
+
+function paRenderMessage(m) {
+  const card = document.createElement("div");
+  card.className = "pa-message-card" + (m.image_path ? " has-image" : "");
+
+  const from   = escHtml(m.sender_name || "(unknown)");
+  const time   = paFormatTime(m.created_at);
+  const body   = escHtml(m.body || "");
+  const imgHtml = m.image_path
+    ? `<img class="pa-msg-img" src="/uploads/${m.image_path}" alt="image" onclick="window.open('/uploads/${m.image_path}')" />`
+    : "";
+  const statusHtml = `<span class="pa-msg-status ${paStatusClass(m.status)} status-badge">${m.status}</span>`;
+
+  card.innerHTML = `
+    <span class="pa-msg-from">${from}</span>
+    ${statusHtml}
+    <span class="pa-msg-time">${time}</span>
+    ${imgHtml}
+    ${body ? `<div class="pa-msg-body">${body}</div>` : ""}
+  `;
+
+  // Click to expand body
+  const bodyEl = card.querySelector(".pa-msg-body");
+  if (bodyEl) {
+    card.addEventListener("click", (e) => {
+      if (e.target.tagName === "IMG") return;
+      bodyEl.classList.toggle("expanded");
+    });
+  }
+
+  return card;
+}
+
+// ── All messages view ─────────────────────────────────────────────────────────
+async function paLoadAllMessages(reset = false) {
+  if (reset) paMsgOffset = 0;
+  const list = document.getElementById("pa-messages-list");
+  if (reset) list.innerHTML = '<div class="admin-loading">Loading…</div>';
+  const loadMore = document.getElementById("pa-load-more-btn");
+
+  try {
+    const res  = await paFetch(`/api/printer-admin/messages?limit=${PA_PAGE}&offset=${paMsgOffset}`);
+    const data = await res.json();
+    const msgs = data.messages || [];
+
+    if (reset) list.innerHTML = "";
+    if (!msgs.length && reset) {
+      list.innerHTML = '<div class="admin-loading">No messages yet.</div>';
+      loadMore.style.display = "none";
+      return;
+    }
+
+    msgs.forEach(m => list.appendChild(paRenderMessage(m)));
+    paMsgOffset += msgs.length;
+    loadMore.style.display = msgs.length < PA_PAGE ? "none" : "";
+  } catch (err) {
+    if (reset) list.innerHTML = `<div class="admin-loading" style="color:var(--error)">${err.message}</div>`;
+  }
+}
+
+// ── Threads view ──────────────────────────────────────────────────────────────
+async function paLoadThreads() {
+  const threadList   = document.getElementById("pa-thread-list");
+  const threadDetail = document.getElementById("pa-thread-detail");
+  threadList.innerHTML = '<div class="admin-loading">Loading…</div>';
+  threadDetail.classList.add("hidden");
+
+  try {
+    const res     = await paFetch("/api/printer-admin/threads");
+    const data    = await res.json();
+    const threads = data.threads || [];
+
+    threadList.innerHTML = "";
+    if (!threads.length) {
+      threadList.innerHTML = '<div class="admin-loading">No messages yet.</div>';
+      return;
+    }
+
+    threads.forEach(t => {
+      const card     = document.createElement("div");
+      card.className = "pa-thread-card";
+      const name     = t.sender_name || "(unknown)";
+      const initial  = name.replace(/[^a-zA-Z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
+      const preview  = t.latest_body ? escHtml(t.latest_body.slice(0, 60)) : (t.latest_image ? "📷 Image" : "—");
+      const time     = paFormatTime(t.latest_at);
+
+      card.innerHTML = `
+        <div class="pa-thread-avatar">${initial}</div>
+        <div class="pa-thread-info">
+          <div class="pa-thread-name">${escHtml(name)}</div>
+          <div class="pa-thread-preview">${preview}</div>
+        </div>
+        <div class="pa-thread-right">
+          <span class="pa-thread-count">${t.message_count}</span>
+          <span class="pa-thread-time">${time}</span>
+        </div>
+      `;
+
+      card.addEventListener("click", () => paOpenThread(t.sender_name, name));
+      threadList.appendChild(card);
+    });
+  } catch (err) {
+    threadList.innerHTML = `<div class="admin-loading" style="color:var(--error)">${err.message}</div>`;
+  }
+}
+
+async function paOpenThread(sender, displayName) {
+  const threadList   = document.getElementById("pa-thread-list");
+  const threadDetail = document.getElementById("pa-thread-detail");
+  const msgList      = document.getElementById("pa-thread-messages");
+
+  threadList.classList.add("hidden");
+  threadDetail.classList.remove("hidden");
+  document.getElementById("pa-thread-title").textContent = displayName || "(unknown)";
+  msgList.innerHTML = '<div class="admin-loading">Loading…</div>';
+
+  try {
+    const encoded = encodeURIComponent(sender || "");
+    const res     = await paFetch(`/api/printer-admin/messages?limit=200&sender=${encoded}`);
+    const data    = await res.json();
+    const msgs    = data.messages || [];
+    msgList.innerHTML = "";
+    if (!msgs.length) { msgList.innerHTML = '<div class="admin-loading">No messages in this thread.</div>'; return; }
+    msgs.forEach(m => msgList.appendChild(paRenderMessage(m)));
+  } catch (err) {
+    msgList.innerHTML = `<div class="admin-loading" style="color:var(--error)">${err.message}</div>`;
+  }
+}
+
+document.getElementById("pa-back-btn").addEventListener("click", () => {
+  document.getElementById("pa-thread-list").classList.remove("hidden");
+  document.getElementById("pa-thread-detail").classList.add("hidden");
+});
+
+// ── Restore session on tab switch ─────────────────────────────────────────────
+document.querySelectorAll(".nav-tab").forEach(tab => {
+  if (tab.dataset.tab === "printer-admin") {
+    tab.addEventListener("click", async () => {
+      const saved = sessionStorage.getItem(PA_KEY_STORAGE);
+      if (saved && !paApiKey) {
+        paApiKey = saved;
+        try {
+          const res  = await paFetch("/api/printer-admin/me");
+          const data = await res.json();
+          paShowDashboard(data.printer, data.stats);
+        } catch { paApiKey = null; }
+      }
+    });
+  }
+});

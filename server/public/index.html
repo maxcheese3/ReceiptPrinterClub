@@ -409,6 +409,196 @@ image      = &lt;file&gt;</code></pre>
 
     </section>
 
+
+    <!-- ── SUBSCRIPTIONS TAB ─────────────────────────────────────────────── -->
+    <section class="tab-panel" id="tab-subscriptions">
+
+      <!-- Auth gate -->
+      <div id="sub-login-panel">
+        <div class="panel-header">
+          <h1>Subscription Admin</h1>
+          <p>Enter your printer's API key to manage its feed subscriptions.</p>
+        </div>
+        <form id="sub-login-form" style="max-width:420px">
+          <div class="field">
+            <label for="sub-api-key"><span class="label-text">Printer API Key</span></label>
+            <input type="password" id="sub-api-key" placeholder="Your printer's API key" autocomplete="off" />
+          </div>
+          <button type="submit" class="btn btn-primary" id="sub-login-btn">Sign In</button>
+          <div id="sub-login-feedback" class="feedback hidden"></div>
+        </form>
+      </div>
+
+      <!-- Subscription dashboard -->
+      <div id="sub-dashboard" class="hidden">
+        <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1>Subscriptions</h1>
+            <p id="sub-printer-label" style="color:var(--fg-muted);font-size:13px"></p>
+          </div>
+          <button class="btn btn-outline btn-sm" id="sub-logout-btn">Sign Out</button>
+        </div>
+
+        <!-- Add subscription -->
+        <div class="admin-section">
+          <div class="admin-section-header"><h2>Add Subscription</h2></div>
+          <form id="sub-add-form" style="display:flex;flex-direction:column;gap:12px;max-width:520px">
+            <div class="field" style="margin-bottom:0">
+              <label for="sub-name"><span class="label-text">Name</span></label>
+              <input type="text" id="sub-name" placeholder="e.g. XKCD Comics" maxlength="100" />
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label for="sub-url">
+                <span class="label-text">Feed URL</span>
+                <span class="label-hint"> — RSS, Atom, or paste https://xkcd.com for XKCD</span>
+              </label>
+              <input type="url" id="sub-url" placeholder="https://xkcd.com or https://example.com/feed.rss" />
+            </div>
+            <button type="submit" class="btn btn-primary" id="sub-add-btn" style="align-self:flex-start">Add Feed</button>
+            <div id="sub-add-feedback" class="feedback hidden"></div>
+          </form>
+        </div>
+
+        <!-- Subscription list -->
+        <div class="admin-section">
+          <div class="admin-section-header">
+            <h2>Active Subscriptions</h2>
+            <button class="btn btn-outline btn-sm" id="sub-refresh-btn">↻ Refresh</button>
+          </div>
+          <div id="sub-list" class="sub-list">
+            <div class="admin-loading">Loading…</div>
+          </div>
+        </div>
+
+        <!-- Known feeds reference -->
+        <div class="admin-section">
+          <div class="admin-section-header"><h2>Known Feeds</h2></div>
+          <div class="known-feeds">
+            <div class="known-feed-item" onclick="document.getElementById('sub-url').value='https://xkcd.com';document.getElementById('sub-name').value='XKCD'">
+              <strong>🤓 XKCD</strong><span>https://xkcd.com — daily webcomic with image</span>
+            </div>
+            <div class="known-feed-item" onclick="document.getElementById('sub-url').value='https://www.nasa.gov/feeds/iotd-feed/';document.getElementById('sub-name').value='NASA Image of the Day'">
+              <strong>🚀 NASA Image of the Day</strong><span>https://www.nasa.gov/feeds/iotd-feed/</span>
+            </div>
+            <div class="known-feed-item" onclick="document.getElementById('sub-url').value='https://hnrss.org/frontpage';document.getElementById('sub-name').value='Hacker News'">
+              <strong>🔶 Hacker News Top</strong><span>https://hnrss.org/frontpage</span>
+            </div>
+            <div class="known-feed-item" onclick="document.getElementById('sub-url').value='https://www.theverge.com/rss/index.xml';document.getElementById('sub-name').value='The Verge'">
+              <strong>📱 The Verge</strong><span>https://www.theverge.com/rss/index.xml</span>
+            </div>
+            <div class="known-feed-item" onclick="document.getElementById('sub-url').value='https://feeds.bbci.co.uk/news/rss.xml';document.getElementById('sub-name').value='BBC News'">
+              <strong>🌍 BBC News</strong><span>https://feeds.bbci.co.uk/news/rss.xml</span>
+            </div>
+            <div class="known-feed-item" onclick="document.getElementById('sub-url').value='https://garfieldminusgarfield.net/rss';document.getElementById('sub-name').value='Garfield Minus Garfield'">
+              <strong>😿 Garfield Minus Garfield</strong><span>https://garfieldminusgarfield.net/rss</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ── PRINTER ADMIN TAB ─────────────────────────────────────────────── -->
+    <section class="tab-panel" id="tab-printer-admin">
+
+      <!-- Auth gate -->
+      <div id="pa-login-panel">
+        <div class="panel-header">
+          <h1>Printer Admin</h1>
+          <p>Enter your printer's API key to view messages and manage settings.</p>
+        </div>
+        <form id="pa-login-form" style="max-width:420px">
+          <div class="field">
+            <label for="pa-api-key"><span class="label-text">Printer API Key</span></label>
+            <input type="password" id="pa-api-key" placeholder="Your printer's API key" autocomplete="off" />
+          </div>
+          <button type="submit" class="btn btn-primary" id="pa-login-btn">Sign In</button>
+          <div id="pa-login-feedback" class="feedback hidden"></div>
+        </form>
+      </div>
+
+      <!-- Dashboard -->
+      <div id="pa-dashboard" class="hidden">
+
+        <!-- Header row: printer name + sign out -->
+        <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1 id="pa-printer-name">Printer Admin</h1>
+            <p id="pa-printer-meta" style="color:var(--fg-muted);font-size:12px"></p>
+          </div>
+          <button class="btn btn-outline btn-sm" id="pa-logout-btn">Sign Out</button>
+        </div>
+
+        <!-- Settings section -->
+        <div class="admin-section">
+          <div class="admin-section-header"><h2>Printer Settings</h2></div>
+          <form id="pa-settings-form" style="display:flex;flex-direction:column;gap:12px;max-width:500px">
+            <div class="field" style="margin-bottom:0">
+              <label for="pa-name"><span class="label-text">Name</span></label>
+              <input type="text" id="pa-name" maxlength="80" />
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label for="pa-description"><span class="label-text">Description</span><span class="label-hint"> Optional</span></label>
+              <input type="text" id="pa-description" maxlength="200" />
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label for="pa-location"><span class="label-text">Location</span><span class="label-hint"> Optional</span></label>
+              <input type="text" id="pa-location" maxlength="100" />
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label for="pa-columns">
+                <span class="label-text">Columns</span>
+                <span class="label-hint"> chars per line — 24 for 58mm, 36 for 80mm</span>
+              </label>
+              <input type="number" id="pa-columns" min="10" max="200" style="max-width:100px" />
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button type="submit" class="btn btn-primary btn-sm" id="pa-save-btn">Save Settings</button>
+              <div id="pa-settings-feedback" class="feedback hidden" style="margin:0;padding:6px 10px;font-size:12px"></div>
+            </div>
+          </form>
+        </div>
+
+        <!-- Messages section -->
+        <div class="admin-section">
+          <div class="admin-section-header">
+            <h2>Messages</h2>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <!-- View toggle -->
+              <div class="pa-view-toggle">
+                <button class="pa-view-btn active" id="pa-view-all">All Messages</button>
+                <button class="pa-view-btn" id="pa-view-threads">Threads</button>
+              </div>
+              <button class="btn btn-outline btn-sm" id="pa-load-more-btn" style="display:none">Load More</button>
+            </div>
+          </div>
+
+          <!-- All messages view -->
+          <div id="pa-all-view">
+            <div id="pa-messages-list" class="pa-message-list">
+              <div class="admin-loading">Loading…</div>
+            </div>
+          </div>
+
+          <!-- Threads view -->
+          <div id="pa-threads-view" class="hidden">
+            <div id="pa-thread-list" class="pa-thread-list">
+              <div class="admin-loading">Loading…</div>
+            </div>
+            <!-- Thread detail (shown when a thread is selected) -->
+            <div id="pa-thread-detail" class="hidden">
+              <div class="pa-thread-detail-header">
+                <button class="btn btn-outline btn-sm" id="pa-back-btn">← Back to Threads</button>
+                <span id="pa-thread-title" style="font-weight:600;color:var(--fg)"></span>
+              </div>
+              <div id="pa-thread-messages" class="pa-message-list"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
   </main>
 
   <footer>
@@ -416,7 +606,9 @@ image      = &lt;file&gt;</code></pre>
       <button class="nav-tab active" data-tab="send">Send Message</button>
       <button class="nav-tab" data-tab="register">Register Printer</button>
       <button class="nav-tab" data-tab="api">API Docs</button>
-      <button class="nav-tab" data-tab="admin">⚙ Admin</button>
+      <button class="nav-tab" data-tab="admin">⚙ Super Admin</button>
+      <button class="nav-tab" data-tab="subscriptions">📡 Subscriptions</button>
+      <button class="nav-tab" data-tab="printer-admin">🖨️ Printer Admin</button>
     </nav>
     <div class="theme-picker" id="theme-picker">
       <button class="theme-btn active" data-theme="dark" title="Dark Mode">🌑</button>

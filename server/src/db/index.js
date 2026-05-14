@@ -55,6 +55,19 @@ function initSchema() {
 
     CREATE INDEX IF NOT EXISTS idx_messages_printer_status
       ON messages(printer_id, status, created_at);
+
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id            TEXT PRIMARY KEY,
+      printer_id    TEXT NOT NULL,
+      name          TEXT NOT NULL,
+      feed_url      TEXT NOT NULL,
+      feed_type     TEXT NOT NULL DEFAULT 'rss',
+      last_item_id  TEXT,
+      last_checked  TEXT,
+      active        INTEGER NOT NULL DEFAULT 1,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (printer_id) REFERENCES printers(id)
+    );
   `);
 
   // Migrate existing databases that don't have columns/font_size yet
@@ -199,6 +212,89 @@ function getGlobalStats() {
   ).get();
 }
 
+
+// ── Subscriptions ─────────────────────────────────────────────────────────────
+
+function getSubscriptionsByPrinter(printer_id) {
+  return getDb().prepare(
+    `SELECT * FROM subscriptions WHERE printer_id = ? ORDER BY created_at ASC`
+  ).all(printer_id);
+}
+
+function getSubscriptionById(id) {
+  return getDb().prepare(`SELECT * FROM subscriptions WHERE id = ?`).get(id);
+}
+
+function getActiveSubscriptions() {
+  return getDb().prepare(`SELECT * FROM subscriptions WHERE active = 1`).all();
+}
+
+function createSubscription({ id, printer_id, name, feed_url, feed_type }) {
+  getDb().prepare(
+    `INSERT INTO subscriptions (id, printer_id, name, feed_url, feed_type)
+     VALUES (@id, @printer_id, @name, @feed_url, @feed_type)`
+  ).run({ id, printer_id, name, feed_url, feed_type });
+  return getSubscriptionById(id);
+}
+
+function updateSubscription(id, { name, feed_url, feed_type, active }) {
+  getDb().prepare(
+    `UPDATE subscriptions SET name=@name, feed_url=@feed_url, feed_type=@feed_type, active=@active WHERE id=@id`
+  ).run({ id, name, feed_url, feed_type, active });
+}
+
+function updateSubscriptionChecked(id, last_item_id) {
+  getDb().prepare(
+    `UPDATE subscriptions SET last_item_id=@last_item_id, last_checked=datetime('now') WHERE id=@id`
+  ).run({ id, last_item_id });
+}
+
+function deleteSubscription(id) {
+  getDb().prepare(`DELETE FROM subscriptions WHERE id = ?`).run(id);
+}
+
+
+// ── Printer Admin queries ─────────────────────────────────────────────────────
+
+function getPrinterMessages(printer_id, { limit = 50, offset = 0, sender = null }) {
+  if (sender) {
+    return getDb().prepare(
+      `SELECT * FROM messages
+       WHERE printer_id = ? AND sender_name = ?
+       ORDER BY created_at DESC LIMIT ? OFFSET ?`
+    ).all(printer_id, sender, limit, offset);
+  }
+  return getDb().prepare(
+    `SELECT * FROM messages
+     WHERE printer_id = ?
+     ORDER BY created_at DESC LIMIT ? OFFSET ?`
+  ).all(printer_id, limit, offset);
+}
+
+function getPrinterThreads(printer_id) {
+  // Group messages by sender_name, return one row per unique sender
+  // with count, latest timestamp, and latest body snippet
+  return getDb().prepare(
+    `SELECT
+       sender_name,
+       COUNT(*) as message_count,
+       MAX(created_at) as latest_at,
+       (SELECT body FROM messages m2
+        WHERE m2.printer_id = m.printer_id
+          AND m2.sender_name = m.sender_name
+        ORDER BY created_at DESC LIMIT 1) as latest_body,
+       (SELECT image_path FROM messages m3
+        WHERE m3.printer_id = m.printer_id
+          AND m3.sender_name = m.sender_name
+          AND m3.image_path IS NOT NULL
+        ORDER BY created_at DESC LIMIT 1) as latest_image
+     FROM messages m
+     WHERE printer_id = ?
+     GROUP BY sender_name
+     ORDER BY latest_at DESC`
+  ).all(printer_id);
+}
+
 module.exports = {
   getDb,
   listPrinters, getPrinterById, getPrinterByApiKey,
@@ -206,4 +302,7 @@ module.exports = {
   createMessage, getMessageById, getPendingMessages,
   getRecentMessages, setMessageStatus, getStats,
   updatePrinter, hardDeletePrinter, getAllMessages, getGlobalStats,
+  getSubscriptionsByPrinter, getSubscriptionById, getActiveSubscriptions,
+  getPrinterMessages, getPrinterThreads,
+  createSubscription, updateSubscription, updateSubscriptionChecked, deleteSubscription,
 };
