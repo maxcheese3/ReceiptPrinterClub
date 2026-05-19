@@ -12,7 +12,7 @@ const router = express.Router();
 
 const UPLOAD_DIR         = process.env.UPLOAD_DIR || path.join(__dirname, "../../../data/uploads");
 const ALLOWED_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]);
-const MAX_IMAGE_BYTES    = 10 * 1024 * 1024;
+const MAX_IMAGE_BYTES    = 50 * 1024 * 1024; // 50 MB — server resizes before storing
 
 // ── OAuth2 client credentials token fetcher ───────────────────────────────────
 // Genesys token endpoint: https://login.mypurecloud.com/oauth/token
@@ -148,8 +148,10 @@ function fetchImageFromUrl(imageUrl, extraHeaders = {}) {
         file.on("finish", () => {
           if (settled) return;
           settled = true;
-          file.close(() => {
+          file.close(async () => {
             console.log(`[image_url] Saved ${totalBytes} bytes as ${filename}`);
+            // Resize to printer-friendly width before the client downloads it.
+            await upload.resizeIfNeeded(destPath);
             resolve(filename);
           });
         });

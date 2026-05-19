@@ -17,6 +17,7 @@ const { v4: uuidv4 }   = require("uuid");
 const path = require("path");
 const fs   = require("fs");
 const db   = require("../db");
+const upload = require("../middleware/upload");
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "../../data/uploads");
 const SMTP_PORT  = parseInt(process.env.SMTP_PORT || "2525", 10);
@@ -94,6 +95,7 @@ function startSmtpServer() {
                 const fname = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
                 const fpath = path.join(UPLOAD_DIR, fname);
                 fs.writeFileSync(fpath, att.content);
+                await upload.resizeIfNeeded(fpath);
                 imagePath = fname;
                 break;
               }

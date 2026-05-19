@@ -111,13 +111,53 @@
               <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="11" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 4h5l1.5 2H15a1 1 0 011 1v8a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h1L7.5 4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
               Take Photo
             </button>
+            <button type="button" class="btn btn-outline hidden" id="grayscale-toggle" title="Toggle thermal print preview">
+              <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M10 3a7 7 0 010 14V3z" fill="currentColor"/></svg>
+              B&W Options
+            </button>
           </div>
           <input type="file" id="file-browse"  accept="image/*"                       style="display:none" />
           <input type="file" id="file-capture" accept="image/*" capture="environment" style="display:none" />
+
+          <!-- Grayscale / dither controls — shown only when grayscale mode is on and image is loaded -->
+          <div class="image-adjust-panel hidden" id="image-adjust-panel">
+            <div class="image-adjust-row">
+              <label class="image-adjust-label" for="dither-method">Dithering</label>
+              <select id="dither-method" class="image-adjust-select">
+                <option value="none">None (solid threshold)</option>
+                <option value="ordered" selected>Ordered (Bayer 4×4)</option>
+                <option value="floyd">Floyd-Steinberg</option>
+                <option value="atkinson">Atkinson</option>
+              </select>
+            </div>
+            <div class="image-adjust-row">
+              <label class="image-adjust-label" for="img-brightness">Brightness</label>
+              <div class="image-adjust-slider-wrap">
+                <input type="range" id="img-brightness" min="-100" max="100" value="0" class="image-adjust-slider" />
+                <span class="image-adjust-val" id="img-brightness-val">0</span>
+              </div>
+            </div>
+            <div class="image-adjust-row">
+              <label class="image-adjust-label" for="img-contrast">Contrast</label>
+              <div class="image-adjust-slider-wrap">
+                <input type="range" id="img-contrast" min="-100" max="100" value="0" class="image-adjust-slider" />
+                <span class="image-adjust-val" id="img-contrast-val">0</span>
+              </div>
+            </div>
+            <div class="image-adjust-row">
+              <label class="image-adjust-label" for="img-threshold">Threshold</label>
+              <div class="image-adjust-slider-wrap">
+                <input type="range" id="img-threshold" min="0" max="255" value="128" class="image-adjust-slider" />
+                <span class="image-adjust-val" id="img-threshold-val">128</span>
+              </div>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" id="img-reset-btn" style="align-self:flex-start;margin-top:2px">Reset</button>
+          </div>
+
           <div class="drop-zone" id="drop-zone">
             <div class="drop-zone-idle" id="drop-zone-idle">
               <svg viewBox="0 0 40 40" fill="none"><path d="M20 8v16M13 15l7-7 7 7" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 28h24" stroke="var(--fg-muted)" stroke-width="1.5" stroke-linecap="round"/></svg>
-              <p>or drag &amp; drop an image here</p>
+              <p>drag &amp; drop, or <span class="link" id="browse-link">browse</span> &nbsp;·&nbsp; Ctrl+V to paste</p>
             </div>
             <div class="drop-zone-preview hidden" id="drop-zone-preview">
               <img id="preview-img" src="" alt="Preview" />

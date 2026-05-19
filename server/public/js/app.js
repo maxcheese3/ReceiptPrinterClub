@@ -247,14 +247,14 @@ const webcamCancel    = document.getElementById("webcam-cancel");
 
 function setImage(file) {
   currentImageFile = file;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    previewImg.src = e.target.result;
-    dropZoneIdle.classList.add("hidden");
-    dropZonePreview.classList.remove("hidden");
-  };
-  reader.readAsDataURL(file);
   hideWebcam();
+  dropZoneIdle.classList.add("hidden");
+  dropZonePreview.classList.remove("hidden");
+  document.getElementById("grayscale-toggle").classList.remove("hidden");
+  renderPreview();
+  // Sync the adjust panel visibility now that currentImageFile is set.
+  // syncGrayscaleUI is defined later but is a hoisted function declaration.
+  syncGrayscaleUI();
 }
 
 function clearImage() {
@@ -262,6 +262,9 @@ function clearImage() {
   fileBrowse.value = ""; fileCapture.value = "";
   dropZoneIdle.classList.remove("hidden");
   dropZonePreview.classList.add("hidden");
+  processedImageBlob = null;
+  document.getElementById("image-adjust-panel").classList.add("hidden");
+  document.getElementById("grayscale-toggle").classList.add("hidden");
 }
 
 function hideWebcam() {
@@ -271,6 +274,7 @@ function hideWebcam() {
 }
 
 browseBtn.addEventListener("click",   (e) => { e.preventDefault(); e.stopPropagation(); fileBrowse.click(); });
+document.getElementById("browse-link")?.addEventListener("click", (e) => { e.stopPropagation(); fileBrowse.click(); });
 fileBrowse.addEventListener("change",  () => { if (fileBrowse.files[0])  setImage(fileBrowse.files[0]); });
 fileCapture.addEventListener("change", () => { if (fileCapture.files[0]) setImage(fileCapture.files[0]); });
 removeBtn.addEventListener("click",   (e) => { e.preventDefault(); clearImage(); });
@@ -311,6 +315,269 @@ dropZone.addEventListener("drop", (e) => {
   if (file?.type.startsWith("image/")) setImage(file);
 });
 
+// ── Paste to attach ───────────────────────────────────────────────────────────
+// Handles Ctrl/Cmd+V anywhere on the page, and right-click > Paste inside the
+// drop zone (contextmenu paste is routed through the same clipboard event).
+function handlePaste(e) {
+  const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith("image/")) {
+      e.preventDefault();
+      const file = item.getAsFile();
+      if (file) setImage(file);
+      break;
+    }
+  }
+}
+document.addEventListener("paste", handlePaste);
+dropZone.addEventListener("paste", handlePaste);
+
+/* ── Grayscale / dithering preview ──────────────────────────────────────────── */
+const GRAYSCALE_KEY    = "printbridge_grayscale";
+const grayscaleToggle  = document.getElementById("grayscale-toggle");
+const adjustPanel      = document.getElementById("image-adjust-panel");
+const ditherSelect     = document.getElementById("dither-method");
+const brightnessSlider = document.getElementById("img-brightness");
+const contrastSlider   = document.getElementById("img-contrast");
+const thresholdSlider  = document.getElementById("img-threshold");
+const brightnessVal    = document.getElementById("img-brightness-val");
+const contrastVal      = document.getElementById("img-contrast-val");
+const thresholdVal     = document.getElementById("img-threshold-val");
+const imgResetBtn      = document.getElementById("img-reset-btn");
+
+let isGrayscale        = localStorage.getItem(GRAYSCALE_KEY) === "1";
+let processedImageBlob = null;
+
+// ── Dithering algorithms ──────────────────────────────────────────────────────
+
+function toGrayArray(data, width, height, brightness, contrast) {
+  const gray = new Float32Array(width * height);
+  for (let i = 0; i < width * height; i++) {
+    let lum = 0.299 * data[i*4] + 0.587 * data[i*4+1] + 0.114 * data[i*4+2];
+    // Brightness
+    lum += brightness;
+    // Contrast
+    if (contrast !== 0) {
+      const f = (259 * (contrast + 255)) / (255 * (259 - contrast));
+      lum = f * (lum - 128) + 128;
+    }
+    gray[i] = Math.max(0, Math.min(255, lum));
+  }
+  return gray;
+}
+
+function ditherNone(gray, width, height, threshold) {
+  const out = new Uint8ClampedArray(width * height);
+  for (let i = 0; i < gray.length; i++) out[i] = gray[i] >= threshold ? 255 : 0;
+  return out;
+}
+
+function ditherOrdered(gray, width, height, threshold) {
+  const bayer = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5];
+  const out   = new Uint8ClampedArray(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i   = y * width + x;
+      const bv  = (bayer[(y % 4) * 4 + (x % 4)] / 16 - 0.5) * 255;
+      out[i]    = (gray[i] + bv * 0.5) >= threshold ? 255 : 0;
+    }
+  }
+  return out;
+}
+
+function ditherFloydSteinberg(gray, width, height, threshold) {
+  const buf = new Float32Array(gray);
+  const out = new Uint8ClampedArray(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i   = y * width + x;
+      const nw  = buf[i] >= threshold ? 255 : 0;
+      out[i]    = nw;
+      const err = buf[i] - nw;
+      if (x+1 < width)                     buf[i+1]         += err * 7/16;
+      if (y+1 < height) {
+        if (x > 0)                          buf[i+width-1]   += err * 3/16;
+                                            buf[i+width]     += err * 5/16;
+        if (x+1 < width)                    buf[i+width+1]   += err * 1/16;
+      }
+    }
+  }
+  return out;
+}
+
+function ditherAtkinson(gray, width, height, threshold) {
+  const buf  = new Float32Array(gray);
+  const out  = new Uint8ClampedArray(width * height);
+  const dirs = [[0,1],[0,2],[1,-1],[1,0],[1,1],[2,0]];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i   = y * width + x;
+      const nw  = buf[i] >= threshold ? 255 : 0;
+      out[i]    = nw;
+      const err = (buf[i] - nw) / 8;
+      for (const [dy, dx] of dirs) {
+        const ny = y+dy, nx = x+dx;
+        if (ny < height && nx >= 0 && nx < width) buf[ny*width+nx] += err;
+      }
+    }
+  }
+  return out;
+}
+
+// ── Core render — called by setImage and slider/toggle events ─────────────────
+
+function renderPreview() {
+  if (!currentImageFile) return;
+
+  // Always read via FileReader (data URL) — these never expire unlike blob URLs.
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+
+    if (!isGrayscale) {
+      // Color mode: just display the data URL directly.
+      previewImg.src = dataUrl;
+      previewImg.style.filter = "";
+      processedImageBlob = null;
+      return;
+    }
+
+    // Grayscale mode: draw into a canvas, apply dithering, then show the result.
+    const method     = ditherSelect.value;
+    const brightness = parseInt(brightnessSlider.value, 10);
+    const contrast   = parseInt(contrastSlider.value, 10);
+    const threshold  = parseInt(thresholdSlider.value, 10);
+
+    // First show the raw image so there's no blank flash while the canvas processes.
+    previewImg.src = dataUrl;
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas  = document.createElement("canvas");
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+
+      let imageData;
+      try {
+        imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      } catch (err) {
+        // SecurityError (tainted canvas) — fall back to CSS grayscale.
+        console.warn("getImageData blocked, using CSS grayscale:", err);
+        previewImg.style.filter = "grayscale(1) contrast(1.4)";
+        processedImageBlob = null;
+        return;
+      }
+      previewImg.style.filter = "";
+
+      const { data, width, height } = imageData;
+      const gray = toGrayArray(data, width, height, brightness, contrast);
+
+      let mono;
+      switch (method) {
+        case "none":     mono = ditherNone(gray, width, height, threshold);           break;
+        case "floyd":    mono = ditherFloydSteinberg(gray, width, height, threshold); break;
+        case "atkinson": mono = ditherAtkinson(gray, width, height, threshold);       break;
+        default:         mono = ditherOrdered(gray, width, height, threshold);        break;
+      }
+
+      for (let i = 0; i < width * height; i++) {
+        const v = mono[i];
+        data[i*4] = data[i*4+1] = data[i*4+2] = v;
+        data[i*4+3] = 255;
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      // Replace preview with processed version and capture blob for upload.
+      previewImg.src = canvas.toDataURL("image/png");
+      canvas.toBlob((blob) => { processedImageBlob = blob; }, "image/png");
+    };
+    img.src = dataUrl;
+  };
+  reader.readAsDataURL(currentImageFile);
+}
+
+// Debounced version for slider events
+let _renderTimer = null;
+function scheduleRender() {
+  clearTimeout(_renderTimer);
+  _renderTimer = setTimeout(renderPreview, 40);
+}
+
+// ── Toggle ────────────────────────────────────────────────────────────────────
+
+function syncGrayscaleUI() {
+  grayscaleToggle.classList.toggle("active", isGrayscale);
+  adjustPanel.classList.toggle("hidden", !(isGrayscale && currentImageFile));
+}
+
+grayscaleToggle.addEventListener("click", () => {
+  isGrayscale = !isGrayscale;
+  localStorage.setItem(GRAYSCALE_KEY, isGrayscale ? "1" : "0");
+  syncGrayscaleUI();
+  renderPreview();
+});
+
+// ── Sliders & select ──────────────────────────────────────────────────────────
+
+function syncLabels() {
+  brightnessVal.textContent = brightnessSlider.value;
+  contrastVal.textContent   = contrastSlider.value;
+  thresholdVal.textContent  = thresholdSlider.value;
+}
+syncLabels();
+
+[brightnessSlider, contrastSlider, thresholdSlider].forEach(el =>
+  el.addEventListener("input", () => { syncLabels(); scheduleRender(); })
+);
+ditherSelect.addEventListener("change", renderPreview);
+
+imgResetBtn.addEventListener("click", () => {
+  brightnessSlider.value = 0;
+  contrastSlider.value   = 0;
+  thresholdSlider.value  = 128;
+  syncLabels();
+  renderPreview();
+});
+
+// Apply saved preference on load (no image yet, so just update the button style)
+syncGrayscaleUI();
+
+/* ── Pre-upload image resize ──────────────────────────────────────────────────
+   Caps color-mode uploads at MAX_UPLOAD_PX on the longest side using canvas,
+   so the server never receives a multi-megapixel bitmap.
+   Grayscale mode already produces a canvas-rendered PNG at printer width,
+   so this only runs for the raw color path.                                   */
+const MAX_UPLOAD_PX = 1200;
+
+function resizeFileForUpload(file) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const { naturalWidth: w, naturalHeight: h } = img;
+      if (w <= MAX_UPLOAD_PX && h <= MAX_UPLOAD_PX) {
+        resolve(file); // already small enough
+        return;
+      }
+      const scale  = MAX_UPLOAD_PX / Math.max(w, h);
+      const canvas = document.createElement("canvas");
+      canvas.width  = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        const name = file.name.replace(/\.[^.]+$/, ".jpg");
+        resolve(new File([blob], name, { type: "image/jpeg" }));
+      }, "image/jpeg", 0.92);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 /* ── Send form ───────────────────────────────────────────────────────────────── */
 const sendForm  = document.getElementById("send-form");
 const submitBtn = document.getElementById("submit-btn");
@@ -338,8 +605,19 @@ sendForm.addEventListener("submit", async (e) => {
       if (body) fd.append("body", body);
       fd.append("word_wrap", wrapToggle.checked ? "1" : "0");
       fd.append("font_size", fontSizeSel.value);
-      if (currentImageFile) fd.append("image", currentImageFile, currentImageFile.name);
+      if (currentImageFile) {
+        // Use the dithered/processed blob when in grayscale mode, otherwise the raw file
+        const imageToSend = (isGrayscale && processedImageBlob)
+          ? new File([processedImageBlob], currentImageFile.name.replace(/\.[^.]+$/, ".png"), { type: "image/png" })
+          : await resizeFileForUpload(currentImageFile);
+        fd.append("image", imageToSend, imageToSend.name);
+      }
       const res  = await fetch("/api/messages", { method: "POST", body: fd });
+      if (!res.ok) {
+        let msg = `Server error (${res.status})`;
+        try { const d = await res.json(); if (d.error) msg = d.error; } catch {}
+        return { success: false, error: msg };
+      }
       return res.json();
     }));
     const allOk = results.every(d => d.success);

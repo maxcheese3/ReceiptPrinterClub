@@ -1,4 +1,4 @@
-# PrintBridge 🖨️
+# ReceiptPrinterClub 🖨️
 
 A self-hosted, multitenant print-to-printer server. Anyone on your network can
 send text messages and images to registered Windows printers via:
@@ -59,6 +59,9 @@ Fill in the name, description, and location. On submit you'll receive a
 only once.
 
 ### 3. Set up the Windows print client
+
+You will need to install Node.js: https://nodejs.org/en/download
+Messages will print to your default printer.  You can specify a printer name in the .env if desired.
 
 Copy the `client/` folder to your Windows machine (the one with the printer).
 
