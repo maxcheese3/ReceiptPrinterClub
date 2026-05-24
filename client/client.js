@@ -9,15 +9,17 @@ const Jimp      = require("jimp");
 
 // ── OS detection ──────────────────────────────────────────────────────────────
 const IS_WINDOWS = process.platform === "win32";
-const IS_LINUX   = process.platform === "linux" || process.platform === "darwin";
+const IS_MAC     = process.platform === "darwin";
+const IS_LINUX   = process.platform === "linux";
+const IS_UNIX    = IS_LINUX || IS_MAC; // macOS and Linux share the same print module
 
-// Load Linux print module only on Linux/macOS (canvas may not be installed on Windows)
+// Load Unix print module on Linux/macOS (canvas may not be installed on Windows)
 let linuxPrint = null;
-if (IS_LINUX) {
+if (IS_UNIX) {
   try {
     linuxPrint = require("./print-linux");
   } catch (err) {
-    console.error("[FATAL] Linux print module failed to load:", err.message);
+    console.error("[FATAL] Unix print module failed to load:", err.message);
     console.error("Run: npm install canvas");
     process.exit(1);
   }
@@ -366,8 +368,9 @@ async function poll() {
   }
 }
 
+const platformLabel = IS_WINDOWS ? "Windows (GDI/PowerShell)" : IS_MAC ? "macOS (CUPS/ESC-POS)" : "Linux (CUPS/ESC-POS)";
 log.info("PrintBridge Client starting…");
-log.info(`  Platform:      ${IS_WINDOWS ? "Windows (GDI/PowerShell)" : "Linux/macOS (CUPS)"}`);
+log.info(`  Platform:      ${platformLabel}`);
 log.info(`  Server:        ${SERVER_URL}`);
 log.info(`  Poll interval: ${POLL_MS}ms`);
 log.info(`  Printer:       ${PRINTER_NAME || "(Windows default)"}`);

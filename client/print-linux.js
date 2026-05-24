@@ -238,12 +238,27 @@ async function cupsText(textPayload, fontSize, tempDir) {
   const bodyPtPx = ptToPx(fontSize || c.fontSize, dpi);
   const metaPtPx = ptToPx(9, dpi);
 
+  const IS_MAC = process.platform === "darwin";
+
   const fontCandidates = [
+    // ── Linux paths ──────────────────────────────────────────────────────────
     "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
     "/usr/share/fonts/truetype/freefont/FreeMono.ttf",
     "/usr/share/fonts/liberation-mono/LiberationMono-Bold.ttf",
     "/usr/share/fonts/liberation/LiberationMono-Bold.ttf",
+    // ── macOS paths ──────────────────────────────────────────────────────────
+    // Homebrew-installed Liberation fonts (Apple Silicon & Intel)
+    "/opt/homebrew/share/fonts/liberation-fonts/LiberationMono-Bold.ttf",
+    "/usr/local/share/fonts/liberation/LiberationMono-Bold.ttf",
+    // User-installed via Font Book
+    `${process.env.HOME}/Library/Fonts/LiberationMono-Bold.ttf`,
+    // Courier New ships with macOS (in Supplemental on 10.15+, root on older)
+    "/System/Library/Fonts/Supplemental/Courier New Bold.ttf",
+    "/Library/Fonts/Courier New Bold.ttf",
+    // Fallback: plain Courier New (not bold, but readable)
+    "/System/Library/Fonts/Supplemental/Courier New.ttf",
+    "/Library/Fonts/Courier New.ttf",
   ];
   let registeredFamily = "monospace";
   for (const f of fontCandidates) {
