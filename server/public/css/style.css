@@ -151,7 +151,7 @@ header {
   height: 56px;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 12px;
 }
 
@@ -190,6 +190,79 @@ nav {
 }
 .nav-tab:hover { color: var(--fg); background: var(--bg-input); }
 .nav-tab.active { color: var(--accent); background: var(--nav-active-bg); }
+
+/* ── Hamburger button ────────────────────────────────────────────────────────── */
+.hamburger-btn {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 36px;
+  height: 36px;
+  padding: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.hamburger-btn span {
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--fg-muted);
+  transition: background 0.15s;
+}
+.hamburger-btn:hover {
+  background: var(--bg-input);
+  border-color: var(--border);
+}
+.hamburger-btn:hover span,
+.hamburger-btn.open span { background: var(--fg); }
+
+/* ── Header nav dropdown ─────────────────────────────────────────────────────── */
+.header-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+}
+.header-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 100;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  box-shadow: var(--shadow-lg);
+  min-width: 200px;
+  padding: 6px;
+}
+.header-menu-dropdown #nav-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.header-menu-dropdown .nav-tab {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border-radius: 6px;
+}
+.nav-menu-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
+}
+.nav-menu-logout {
+  width: 100%;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nav-menu-logout:hover { color: var(--error); background: var(--bg-input); }
 
 /* ── Main ───────────────────────────────────────────────────────────────────── */
 main {
@@ -595,7 +668,7 @@ footer {
   border-top: 1px solid var(--border);
   padding: 10px 24px;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
   gap: 16px;
   color: var(--fg-muted);
@@ -604,13 +677,6 @@ footer {
 }
 footer a { color: var(--accent); text-decoration: none; }
 footer a:hover { text-decoration: underline; }
-/* ── Footer nav ──────────────────────────────────────────────────────────────── */
-#footer-nav {
-  display: flex;
-  gap: 2px;
-  flex-wrap: wrap;
-  align-items: center;
-}
 
 
 /* ── Spinner ─────────────────────────────────────────────────────────────────── */
