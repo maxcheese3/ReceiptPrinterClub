@@ -19,7 +19,7 @@ export default function Layout({ children, theme, onThemeChange }: LayoutProps) 
 
       <header>
         <div className="header-inner">
-          <div className="logo" style={{ cursor: 'pointer' }} onClick={() => navigate('/send')}>
+          <div className="logo" style={{ cursor: 'pointer' }} onClick={() => navigate('/send-message')}>
             <svg className="logo-icon" viewBox="0 0 40 40" fill="none">
               <rect x="6" y="14" width="28" height="18" rx="3" fill="var(--accent)" opacity="0.15" />
               <rect x="6" y="14" width="28" height="18" rx="3" stroke="var(--accent)" strokeWidth="2" />
