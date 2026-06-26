@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { usePrinterAuth } from '../contexts/PrinterAuthContext';
 
 const PUBLIC_ITEMS = [
-  { to: '/send',  label: 'Send Message' },
+  { to: '/send-message', label: 'Send Message' },
   { to: '/docs',  label: 'API Docs' },
   { to: '/admin', label: 'Admin' },
 ];
@@ -24,7 +24,7 @@ export default function NavMenu({ onNavigate }: NavMenuProps) {
   function handleLogout() {
     logout();
     onNavigate?.();
-    navigate('/send');
+    navigate('/send-message');
   }
 
   return (
