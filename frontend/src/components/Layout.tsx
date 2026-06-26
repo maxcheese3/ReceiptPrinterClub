@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import NavFooter from './NavFooter';
+import NavMenu from './NavMenu';
 import type { Theme } from '../hooks/useTheme';
 
 interface LayoutProps {
@@ -10,6 +11,7 @@ interface LayoutProps {
 
 export default function Layout({ children, theme, onThemeChange }: LayoutProps) {
   const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <>
@@ -27,13 +29,32 @@ export default function Layout({ children, theme, onThemeChange }: LayoutProps) 
             </svg>
             <span>ReceiptPrinterClub</span>
           </div>
+
+          <button
+            className={`hamburger-btn${menuOpen ? ' open' : ''}`}
+            aria-label="Toggle navigation menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
         </div>
+
+        {menuOpen && (
+          <>
+            <div className="header-menu-backdrop" onClick={() => setMenuOpen(false)} />
+            <div className="header-menu-dropdown">
+              <NavMenu onNavigate={() => setMenuOpen(false)} />
+            </div>
+          </>
+        )}
       </header>
 
       <main>{children}</main>
 
       <footer>
-        <NavFooter />
         <div className="theme-picker">
           {(['dark', 'light', 'rush', 'beans', 'shrek', 'transit'] as const).map((t) => {
             const labels: Record<string, string> = {
