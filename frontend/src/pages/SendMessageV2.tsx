@@ -9,6 +9,8 @@ import { useImageResize } from '../hooks/useImageResize';
 import type { DitherMethod } from '../hooks/useDithering';
 
 const GRAYSCALE_KEY = 'printbridge_grayscale_v2';
+const SENDER_NAME_KEY = 'printbridge_sender_name';
+const FONT_SIZE_KEY = 'printbridge_font_size';
 const FONT_SIZE_COLS: Record<number, number> = { 7: 31, 8: 27, 9: 24, 10: 22, 11: 20, 12: 18, 14: 16 };
 
 function colsForFontSize(pt: number): number {
@@ -38,7 +40,9 @@ export default function SendMessageV2() {
   }
 
   // FROM
-  const [senderName, setSenderName] = useState('');
+  const [senderName, setSenderName] = useState(
+    () => localStorage.getItem(SENDER_NAME_KEY) ?? ''
+  );
 
   // Tabs
   const [activeTab, setActiveTab] = useState<ActiveTab>('text');
@@ -51,7 +55,11 @@ export default function SendMessageV2() {
 
   // Body
   const [body, setBody] = useState('');
-  const [fontSize, setFontSize] = useState(9);
+  const [fontSize, setFontSize] = useState(() => {
+    const saved = localStorage.getItem(FONT_SIZE_KEY);
+    const n = saved ? Number(saved) : 9;
+    return isNaN(n) ? 9 : n;
+  });
   const [cursorLineLen, setCursorLineLen] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -331,7 +339,10 @@ export default function SendMessageV2() {
             type="text"
             id="v2-sender-name"
             value={senderName}
-            onChange={(e) => setSenderName(e.target.value)}
+            onChange={(e) => {
+              setSenderName(e.target.value);
+              localStorage.setItem(SENDER_NAME_KEY, e.target.value);
+            }}
             placeholder="Your name"
             maxLength={100}
           />
@@ -370,7 +381,11 @@ export default function SendMessageV2() {
               <select
                 id="v2-font-size"
                 value={fontSize}
-                onChange={(e) => setFontSize(Number(e.target.value))}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  setFontSize(n);
+                  localStorage.setItem(FONT_SIZE_KEY, String(n));
+                }}
                 title="Print font size"
                 style={{ width: 'auto' }}
               >
