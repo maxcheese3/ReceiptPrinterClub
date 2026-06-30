@@ -4,17 +4,17 @@ const ADMIN_TOKEN_KEY = 'printbridge_admin_token';
 
 export function useAdminAuth() {
   const [token, setToken] = useState<string | null>(
-    () => sessionStorage.getItem(ADMIN_TOKEN_KEY)
+    () => localStorage.getItem(ADMIN_TOKEN_KEY)
   );
 
   const login = useCallback((t: string) => {
     setToken(t);
-    sessionStorage.setItem(ADMIN_TOKEN_KEY, t);
+    localStorage.setItem(ADMIN_TOKEN_KEY, t);
   }, []);
 
   const logout = useCallback(() => {
     setToken(null);
-    sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
   }, []);
 
   const authFetch = useCallback(

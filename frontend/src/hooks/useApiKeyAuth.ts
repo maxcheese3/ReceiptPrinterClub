@@ -2,17 +2,17 @@ import { useState, useCallback } from 'react';
 
 export function useApiKeyAuth(storageKey: string) {
   const [apiKey, setApiKeyState] = useState<string | null>(
-    () => sessionStorage.getItem(storageKey)
+    () => localStorage.getItem(storageKey)
   );
 
   const login = useCallback((key: string) => {
     setApiKeyState(key);
-    sessionStorage.setItem(storageKey, key);
+    localStorage.setItem(storageKey, key);
   }, [storageKey]);
 
   const logout = useCallback(() => {
     setApiKeyState(null);
-    sessionStorage.removeItem(storageKey);
+    localStorage.removeItem(storageKey);
   }, [storageKey]);
 
   const authFetch = useCallback(
