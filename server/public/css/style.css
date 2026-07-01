@@ -1696,3 +1696,29 @@ footer a:hover { text-decoration: underline; }
   border-bottom: 1px solid var(--border);
   margin-bottom: 10px;
 }
+
+/* ── Printer Management rows ─────────────────────────────────────────────────── */
+.pa-manage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.pa-manage-row:last-of-type { border-bottom: none; }
+.pa-manage-row--danger .pa-manage-title { color: var(--error); }
+.pa-manage-info { flex: 1; }
+.pa-manage-title { font-weight: 600; font-size: 14px; color: var(--fg); margin-bottom: 2px; }
+.pa-manage-desc  { font-size: 12px; color: var(--fg-muted); }
+
+/* Delete confirmation box */
+.pa-delete-confirm {
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-top: 8px;
+}
+.pa-delete-confirm p { font-size: 13px; color: var(--fg); margin: 0 0 4px; }
+.pa-delete-confirm strong { color: var(--error); font-family: monospace; }

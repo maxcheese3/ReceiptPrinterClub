@@ -96,7 +96,9 @@ function getPrinterById(id) {
 }
 
 function getPrinterByApiKey(apiKey) {
-  return getDb().prepare(`SELECT * FROM printers WHERE api_key = ? AND active = 1`).get(apiKey);
+  // Note: no active filter here — an inactive printer must still be able to
+  // log into its own admin page to reactivate or delete itself.
+  return getDb().prepare(`SELECT * FROM printers WHERE api_key = ?`).get(apiKey);
 }
 
 function createPrinter({ id, name, description, location, api_key, columns, font_size }) {

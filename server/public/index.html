@@ -599,6 +599,51 @@ image      = &lt;file&gt;</code></pre>
           </form>
         </div>
 
+        <!-- Printer Management section -->
+        <div class="admin-section">
+          <div class="admin-section-header"><h2>Printer Management</h2></div>
+
+          <!-- Hide from public -->
+          <div class="pa-manage-row">
+            <div class="pa-manage-info">
+              <div class="pa-manage-title">Hide from Public Directory</div>
+              <div class="pa-manage-desc">Your printer won't appear in the public printer list, but you can still send messages to it directly.</div>
+            </div>
+            <button class="btn btn-outline btn-sm" id="pa-toggle-hidden-btn">Loading…</button>
+          </div>
+
+          <!-- Deactivate -->
+          <div class="pa-manage-row">
+            <div class="pa-manage-info">
+              <div class="pa-manage-title">Deactivate Printer</div>
+              <div class="pa-manage-desc">Stops your printer from receiving new messages. You can reactivate it at any time.</div>
+            </div>
+            <button class="btn btn-outline btn-sm" id="pa-toggle-active-btn">Loading…</button>
+          </div>
+
+          <!-- Delete -->
+          <div class="pa-manage-row pa-manage-row--danger">
+            <div class="pa-manage-info">
+              <div class="pa-manage-title">Delete Printer</div>
+              <div class="pa-manage-desc">Permanently removes this printer and all its messages. This cannot be undone.</div>
+            </div>
+            <button class="btn btn-danger btn-sm" id="pa-delete-open-btn">Delete Printer…</button>
+          </div>
+
+          <!-- Delete confirmation -->
+          <div id="pa-delete-confirm" class="pa-delete-confirm hidden">
+            <p>To confirm, type your printer name exactly as shown: <strong id="pa-delete-name-hint"></strong></p>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+              <input type="text" id="pa-delete-name-input" placeholder="Type printer name to confirm" style="flex:1;min-width:200px" />
+              <button class="btn btn-danger btn-sm" id="pa-delete-confirm-btn" disabled>Delete Forever</button>
+              <button class="btn btn-outline btn-sm" id="pa-delete-cancel-btn">Cancel</button>
+            </div>
+            <div id="pa-delete-feedback" class="feedback hidden" style="margin-top:8px"></div>
+          </div>
+
+          <div id="pa-manage-feedback" class="feedback hidden" style="margin-top:12px"></div>
+        </div>
+
         <!-- Messages section -->
         <div class="admin-section">
           <div class="admin-section-header">

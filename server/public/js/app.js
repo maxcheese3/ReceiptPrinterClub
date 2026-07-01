@@ -1290,10 +1290,117 @@ function paShowDashboard(printer, stats) {
   document.getElementById("pa-location").value    = printer.location    || "";
   document.getElementById("pa-columns").value     = printer.columns     || 24;
 
+  // Sync management buttons to current printer state
+  paSyncManageButtons(printer);
+
   // Load messages
   paMsgOffset = 0;
   paLoadAllMessages(true);
 }
+
+// ── Printer Management ────────────────────────────────────────────────────────
+
+let paPrinterState = {}; // local cache of current printer data
+
+function paSyncManageButtons(printer) {
+  paPrinterState = printer;
+
+  const hiddenBtn = document.getElementById("pa-toggle-hidden-btn");
+  hiddenBtn.textContent = printer.hidden ? "Make Public" : "Hide from Directory";
+  hiddenBtn.className   = printer.hidden
+    ? "btn btn-primary btn-sm"
+    : "btn btn-outline btn-sm";
+
+  const activeBtn = document.getElementById("pa-toggle-active-btn");
+  activeBtn.textContent = printer.active ? "Deactivate" : "Reactivate";
+  activeBtn.className   = printer.active
+    ? "btn btn-outline btn-sm"
+    : "btn btn-primary btn-sm";
+
+  // Keep delete hint name in sync
+  document.getElementById("pa-delete-name-hint").textContent = printer.name;
+}
+
+async function paPatchMe(patch) {
+  const res  = await paFetch("/api/printer-admin/me", { method: "PATCH", body: JSON.stringify(patch) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Update failed");
+  return data.printer;
+}
+
+// Hide / show toggle
+document.getElementById("pa-toggle-hidden-btn").addEventListener("click", async () => {
+  const fb  = document.getElementById("pa-manage-feedback");
+  const btn = document.getElementById("pa-toggle-hidden-btn");
+  btn.disabled = true;
+  fb.className = "feedback hidden";
+  try {
+    const updated = await paPatchMe({ hidden: paPrinterState.hidden ? 0 : 1 });
+    paSyncManageButtons(updated);
+    showFeedback(fb, "success", updated.hidden ? "✓ Hidden from public directory." : "✓ Now visible in public directory.");
+    loadPrinters();
+  } catch (err) { showFeedback(fb, "error", err.message); }
+  finally { btn.disabled = false; }
+});
+
+// Activate / deactivate toggle
+document.getElementById("pa-toggle-active-btn").addEventListener("click", async () => {
+  const fb  = document.getElementById("pa-manage-feedback");
+  const btn = document.getElementById("pa-toggle-active-btn");
+  btn.disabled = true;
+  fb.className = "feedback hidden";
+  try {
+    const updated = await paPatchMe({ active: paPrinterState.active ? 0 : 1 });
+    paSyncManageButtons(updated);
+    showFeedback(fb, "success", updated.active ? "✓ Printer reactivated." : "✓ Printer deactivated.");
+    loadPrinters();
+  } catch (err) { showFeedback(fb, "error", err.message); }
+  finally { btn.disabled = false; }
+});
+
+// Delete — open confirmation
+document.getElementById("pa-delete-open-btn").addEventListener("click", () => {
+  document.getElementById("pa-delete-confirm").classList.remove("hidden");
+  document.getElementById("pa-delete-name-input").value = "";
+  document.getElementById("pa-delete-confirm-btn").disabled = true;
+  document.getElementById("pa-delete-feedback").className = "feedback hidden";
+  document.getElementById("pa-delete-name-input").focus();
+});
+
+// Delete — cancel
+document.getElementById("pa-delete-cancel-btn").addEventListener("click", () => {
+  document.getElementById("pa-delete-confirm").classList.add("hidden");
+});
+
+// Delete — enable confirm button only when name matches exactly
+document.getElementById("pa-delete-name-input").addEventListener("input", (e) => {
+  const matches = e.target.value === paPrinterState.name;
+  document.getElementById("pa-delete-confirm-btn").disabled = !matches;
+});
+
+// Delete — execute
+document.getElementById("pa-delete-confirm-btn").addEventListener("click", async () => {
+  const fb  = document.getElementById("pa-delete-feedback");
+  const btn = document.getElementById("pa-delete-confirm-btn");
+  btn.disabled = true;
+  fb.className = "feedback hidden";
+  try {
+    const res  = await paFetch("/api/printer-admin/me", {
+      method: "DELETE",
+      body:   JSON.stringify({ confirm_name: paPrinterState.name }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Delete failed");
+    // Sign out and return to login panel
+    paLogout();
+    loadPrinters();
+    showFeedback(document.getElementById("pa-login-feedback"), "success", "Printer deleted successfully.");
+    document.getElementById("pa-login-feedback").classList.remove("hidden");
+  } catch (err) {
+    showFeedback(fb, "error", err.message);
+    btn.disabled = false;
+  }
+});
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 document.getElementById("pa-settings-form").addEventListener("submit", async (e) => {

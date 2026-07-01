@@ -18,6 +18,7 @@ const fs      = require("fs");
 const path    = require("path");
 const { v4: uuidv4 } = require("uuid");
 const db      = require("../db");
+const { resizeIfNeeded } = require("../middleware/upload");
 
 const POLL_INTERVAL_MS = parseInt(process.env.FEED_POLL_INTERVAL_MS || "900000", 10); // 15 min
 const UPLOAD_DIR       = process.env.UPLOAD_DIR || path.join(__dirname, "../../data/uploads");
@@ -58,12 +59,18 @@ async function saveImageFromUrl(imageUrl) {
     if (res.status !== 200) return null;
     const ct  = (res.headers["content-type"] || "").toLowerCase();
     let ext = ".jpg";
-    if (ct.includes("png"))  ext = ".png";
-    else if (ct.includes("gif"))  ext = ".gif";
-    else if (ct.includes("webp")) ext = ".webp";
+    if      (ct.includes("png"))       ext = ".png";
+    else if (ct.includes("gif"))       ext = ".gif";
+    else if (ct.includes("webp"))      ext = ".webp";
+    else if (ct.includes("avif"))      ext = ".avif";
+    else if (ct.includes("heic"))      ext = ".heic";
+    else if (ct.includes("heif"))      ext = ".heif";
+    else if (ct.includes("tiff"))      ext = ".tiff";
+    else if (ct.includes("bmp"))       ext = ".bmp";
     const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
     const destPath = path.join(UPLOAD_DIR, filename);
     fs.writeFileSync(destPath, res.body);
+    await resizeIfNeeded(destPath);
     return filename;
   } catch { return null; }
 }

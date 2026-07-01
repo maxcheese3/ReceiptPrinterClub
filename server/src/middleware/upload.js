@@ -11,26 +11,43 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 // out-of-memory errors in the Jimp-based client when it decodes a large bitmap.
 const MAX_IMAGE_WIDTH = parseInt(process.env.MAX_IMAGE_WIDTH || "800", 10);
 
+// Formats that Jimp 0.22.x can decode on the client.
+// Everything else must be converted to JPEG before storage.
+const JIMP_SUPPORTED_FORMATS = new Set(["jpeg", "png", "bmp", "tiff", "gif"]);
+
 /**
- * Resizes an image file in-place if its width exceeds MAX_IMAGE_WIDTH.
+ * Ensures the image at filePath is:
+ *   1. No wider than MAX_IMAGE_WIDTH (receipt printers are ~464px wide)
+ *   2. In a format the Jimp-based client can decode (JPEG/PNG/BMP/TIFF/GIF)
+ *
  * Uses sharp, which streams large images without loading the full bitmap into
- * RAM — so a 5000×7000 JPEG is handled without hitting any memory ceiling.
+ * RAM — so a 5000×7000 WebP or JPEG is handled without hitting any memory
+ * ceiling.  Overwrites the file in-place via an atomic tmp-rename.
  */
 async function resizeIfNeeded(filePath) {
   try {
-    const meta = await sharp(filePath).metadata();
-    if ((meta.width || 0) <= MAX_IMAGE_WIDTH) return; // already small enough
+    const meta         = await sharp(filePath).metadata();
+    const format       = meta.format || "";          // e.g. "webp", "jpeg", "png"
+    const needsResize  = (meta.width || 0) > MAX_IMAGE_WIDTH;
+    const needsConvert = !JIMP_SUPPORTED_FORMATS.has(format);
 
-    const tmpPath = filePath + ".resizing";
-    await sharp(filePath)
-      .resize({ width: MAX_IMAGE_WIDTH, withoutEnlargement: true })
-      .toFile(tmpPath);
+    if (!needsResize && !needsConvert) return; // already fine
 
-    // Atomically replace the original with the resized version.
+    let pipeline = sharp(filePath);
+    if (needsResize)  pipeline = pipeline.resize({ width: MAX_IMAGE_WIDTH, withoutEnlargement: true });
+    if (needsConvert) pipeline = pipeline.jpeg({ quality: 90 });
+
+    const tmpPath = filePath + ".processing";
+    await pipeline.toFile(tmpPath);
     fs.renameSync(tmpPath, filePath);
-    console.log(`[upload] Resized to ${MAX_IMAGE_WIDTH}px wide: ${path.basename(filePath)}`);
+
+    const ops = [
+      needsResize  && `resized to ${MAX_IMAGE_WIDTH}px`,
+      needsConvert && `converted ${format} → jpeg`,
+    ].filter(Boolean);
+    console.log(`[upload] ${ops.join(", ")}: ${path.basename(filePath)}`);
   } catch (err) {
-    console.warn(`[upload] Could not resize ${path.basename(filePath)}: ${err.message}`);
+    console.warn(`[upload] Could not process ${path.basename(filePath)}: ${err.message}`);
   }
 }
 
@@ -38,7 +55,9 @@ async function resizeIfNeeded(filePath) {
 const storage = multer.memoryStorage();
 
 const fileFilter = (_req, file, cb) => {
-  const allowed = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
+  // Accept everything sharp can read — unsupported formats are converted to
+  // JPEG by resizeIfNeeded() before the client ever downloads them.
+  const allowed = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".avif", ".heic", ".heif"];
   const ext = path.extname(file.originalname).toLowerCase();
   if (allowed.includes(ext)) {
     cb(null, true);

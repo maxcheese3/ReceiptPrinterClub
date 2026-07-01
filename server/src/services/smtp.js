@@ -22,7 +22,7 @@ const upload = require("../middleware/upload");
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "../../data/uploads");
 const SMTP_PORT  = parseInt(process.env.SMTP_PORT || "2525", 10);
 
-const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]);
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".avif", ".heic", ".heif"]);
 
 function slugify(str) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");

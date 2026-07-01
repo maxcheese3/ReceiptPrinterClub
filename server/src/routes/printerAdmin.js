@@ -35,7 +35,7 @@ router.get("/me", requireApiKey, (req, res) => {
 // ── PATCH /api/printer-admin/me ───────────────────────────────────────────────
 router.patch("/me", requireApiKey, (req, res) => {
   const p = req.printer;
-  const { name, description, location, columns } = req.body;
+  const { name, description, location, columns, active, hidden } = req.body;
 
   // Name uniqueness check
   if (name && name.trim() !== p.name) {
@@ -49,13 +49,24 @@ router.patch("/me", requireApiKey, (req, res) => {
     location:    location    !== undefined ? (location.trim()    || null)                        : p.location,
     columns:     columns     !== undefined ? Math.max(10, Math.min(200, parseInt(columns, 10)))  : p.columns,
     font_size:   p.font_size,
-    active:      p.active,
-    hidden:      p.hidden || 0,
+    active:      active      !== undefined ? (active ? 1 : 0)                                    : p.active,
+    hidden:      hidden      !== undefined ? (hidden ? 1 : 0)                                    : (p.hidden || 0),
   });
 
   const updated = db.getPrinterById(p.id);
   const { api_key, ...safe } = updated;
   return res.json({ success: true, printer: safe });
+});
+
+// ── DELETE /api/printer-admin/me ──────────────────────────────────────────────
+// Requires the printer name to be sent as confirmation.
+router.delete("/me", requireApiKey, (req, res) => {
+  const { confirm_name } = req.body;
+  if (!confirm_name || confirm_name.trim() !== req.printer.name) {
+    return res.status(400).json({ error: "Printer name confirmation does not match" });
+  }
+  db.hardDeletePrinter(req.printer.id);
+  return res.json({ success: true });
 });
 
 // ── GET /api/printer-admin/messages ──────────────────────────────────────────
