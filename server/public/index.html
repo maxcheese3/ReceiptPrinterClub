@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ReceiptPrinterClub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700&family=Nunito:wght@400;600;700;800&family=Quicksand:wght@400;500;600;700&family=Press+Start+2P&family=Share+Tech+Mono&family=Cabin:wght@400;600;700&family=Oswald:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖨️</text></svg>" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <svg class="logo-icon" viewBox="0 0 40 40" fill="none">
+          <rect x="6" y="14" width="28" height="18" rx="3" fill="var(--accent)" opacity="0.15"/>
+          <rect x="6" y="14" width="28" height="18" rx="3" stroke="var(--accent)" stroke-width="2"/>
+          <rect x="11" y="8" width="18" height="10" rx="2" fill="var(--bg)" stroke="var(--accent)" stroke-width="2"/>
+          <rect x="14" y="26" width="12" height="8" rx="1.5" fill="var(--bg)" stroke="var(--fg-muted)" stroke-width="1.5"/>
+          <circle cx="28" cy="22" r="2" fill="var(--accent)"/>
+        </svg>
+        <span>ReceiptPrinterClub</span>
+      </div>
+
+
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ── SEND TAB ──────────────────────────────────────────────────────── -->
+    <section class="tab-panel active" id="tab-send">
+      <div class="panel-header">
+        <h1>Send a Message</h1>
+      </div>
+      <form id="send-form">
+
+        <div class="field">
+          <label>
+            <span class="label-text">Destination Printer(s)</span>
+            <span class="label-hint">Select one or more printers</span>
+          </label>
+          <div class="printer-checklist" id="printer-checklist">
+            <div class="printer-checklist-loading">Loading printers…</div>
+          </div>
+          <div id="printer-status" class="printer-status hidden"></div>
+        </div>
+
+        <div class="field">
+          <label for="sender_name">
+            <span class="label-text">Your Name</span>
+            <span class="label-hint">Optional</span>
+          </label>
+          <input type="text" id="sender_name" name="sender_name" placeholder="Jane Smith" maxlength="100" />
+        </div>
+
+        <!-- Message field -->
+        <div class="field">
+          <!-- Top toolbar: label | font size | word wrap -->
+          <div class="textarea-toolbar">
+            <div>
+              <span class="label-text">Message</span>
+              <span class="label-hint" style="margin-left:6px">Monospace · ASCII art &amp; emoji welcome</span>
+            </div>
+            <div class="textarea-controls">
+              <label class="control-label" for="font-size-select">Size</label>
+              <select id="font-size-select" title="Print font size">
+                <option value="7">7pt</option>
+                <option value="8">8pt</option>
+                <option value="9" selected>9pt</option>
+                <option value="10">10pt</option>
+                <option value="11">11pt</option>
+                <option value="12">12pt</option>
+                <option value="14">14pt</option>
+              </select>
+
+              <label class="toggle-label" title="Word wrap long lines automatically">
+                <input type="checkbox" id="wordwrap-toggle" checked />
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                <span class="control-label">Wrap</span>
+              </label>
+            </div>
+          </div>
+          <textarea id="body" name="body" rows="10"
+            placeholder="Type your message here…"
+            maxlength="5000"
+            spellcheck="false"></textarea>
+
+          <div class="char-count-row">
+            <span id="col-status">Col 0 / 24</span>
+            <span><span id="char-count">0</span> chars total</span>
+          </div>
+        </div>
+
+        <!-- Image -->
+        <div class="field">
+          <label>
+            <span class="label-text">Image</span>
+            <span class="label-hint">Optional — upload or take a photo</span>
+          </label>
+          <div class="image-btn-row">
+            <button type="button" class="btn btn-outline" id="browse-btn">
+              <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M2 13l4-4 4 4 3-3 4 3" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+              Browse File
+            </button>
+            <button type="button" class="btn btn-outline" id="capture-btn">
+              <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="11" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 4h5l1.5 2H15a1 1 0 011 1v8a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h1L7.5 4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+              Take Photo
+            </button>
+            <button type="button" class="btn btn-outline hidden" id="grayscale-toggle" title="Toggle thermal print preview">
+              <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M10 3a7 7 0 010 14V3z" fill="currentColor"/></svg>
+              B&W Options
+            </button>
+          </div>
+          <input type="file" id="file-browse"  accept="image/*"                       style="display:none" />
+          <input type="file" id="file-capture" accept="image/*" capture="environment" style="display:none" />
+
+          <!-- Grayscale / dither controls — shown only when grayscale mode is on and image is loaded -->
+          <div class="image-adjust-panel hidden" id="image-adjust-panel">
+            <div class="image-adjust-row">
+              <label class="image-adjust-label" for="dither-method">Dithering</label>
+              <select id="dither-method" class="image-adjust-select">
+                <option value="none">None (solid threshold)</option>
+                <option value="ordered" selected>Ordered (Bayer 4×4)</option>
+                <option value="floyd">Floyd-Steinberg</option>
+                <option value="atkinson">Atkinson</option>
+              </select>
+            </div>
+            <div class="image-adjust-row">
+              <label class="image-adjust-label" for="img-brightness">Brightness</label>
+              <div class="image-adjust-slider-wrap">
+                <input type="range" id="img-brightness" min="-100" max="100" value="0" class="image-adjust-slider" />
+                <span class="image-adjust-val" id="img-brightness-val">0</span>
+              </div>
+            </div>
+            <div class="image-adjust-row">
+              <label class="image-adjust-label" for="img-contrast">Contrast</label>
+              <div class="image-adjust-slider-wrap">
+                <input type="range" id="img-contrast" min="-100" max="100" value="0" class="image-adjust-slider" />
+                <span class="image-adjust-val" id="img-contrast-val">0</span>
+              </div>
+            </div>
+            <div class="image-adjust-row">
+              <label class="image-adjust-label" for="img-threshold">Threshold</label>
+              <div class="image-adjust-slider-wrap">
+                <input type="range" id="img-threshold" min="0" max="255" value="128" class="image-adjust-slider" />
+                <span class="image-adjust-val" id="img-threshold-val">128</span>
+              </div>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" id="img-reset-btn" style="align-self:flex-start;margin-top:2px">Reset</button>
+          </div>
+
+          <div class="drop-zone" id="drop-zone">
+            <div class="drop-zone-idle" id="drop-zone-idle">
+              <svg viewBox="0 0 40 40" fill="none"><path d="M20 8v16M13 15l7-7 7 7" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 28h24" stroke="var(--fg-muted)" stroke-width="1.5" stroke-linecap="round"/></svg>
+              <p>drag &amp; drop, or <span class="link" id="browse-link">browse</span> &nbsp;·&nbsp; Ctrl+V to paste</p>
+            </div>
+            <div class="drop-zone-preview hidden" id="drop-zone-preview">
+              <img id="preview-img" src="" alt="Preview" />
+              <button type="button" class="remove-image" id="remove-image">✕ Remove</button>
+            </div>
+          </div>
+          <div class="webcam-panel hidden" id="webcam-panel">
+            <video id="webcam-video" autoplay playsinline muted></video>
+            <canvas id="webcam-canvas" style="display:none"></canvas>
+            <div class="webcam-controls">
+              <button type="button" class="btn btn-primary" id="webcam-snap">Capture</button>
+              <button type="button" class="btn btn-outline" id="webcam-cancel">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="submit-btn">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M3 10l14-7-7 14V10H3z" fill="currentColor"/></svg>
+          Send to Printer
+        </button>
+        <div id="form-feedback" class="feedback hidden"></div>
+      </form>
+    </section>
+
+    <!-- ── REGISTER TAB ───────────────────────────────────────────────────── -->
+    <section class="tab-panel" id="tab-register">
+      <div class="panel-header">
+        <h1>Register a Printer</h1>
+      </div>
+      <form id="register-form">
+        <div class="field">
+          <label for="reg-name"><span class="label-text">Printer Name</span></label>
+          <input type="text" id="reg-name" required placeholder="Office Receipt Printer" maxlength="80" />
+        </div>
+        <div class="field">
+          <label for="reg-desc"><span class="label-text">Description</span><span class="label-hint"> Optional</span></label>
+          <input type="text" id="reg-desc" placeholder="58mm thermal by the front desk" maxlength="200" />
+        </div>
+        <div class="field">
+          <label for="reg-location"><span class="label-text">Location</span><span class="label-hint"> Optional</span></label>
+          <input type="text" id="reg-location" placeholder="2nd Floor, East Wing" maxlength="100" />
+        </div>
+        <div class="field">
+          <label for="reg-paper-width">
+            <span class="label-text">Paper Width</span>
+          </label>
+          <div class="paper-width-options">
+            <label class="paper-width-option">
+              <input type="radio" name="reg-paper-width" id="reg-paper-58" value="58" checked />
+              <span class="paper-width-label">
+                <strong>58 mm</strong>
+                <span class="paper-width-hint">24 columns at 9pt · set <code>PRINT_COLUMNS=24</code> in client .env</span>
+              </span>
+            </label>
+            <label class="paper-width-option">
+              <input type="radio" name="reg-paper-width" id="reg-paper-80" value="80" />
+              <span class="paper-width-label">
+                <strong>80 mm</strong>
+                <span class="paper-width-hint">36 columns at 9pt · set <code>PRINT_COLUMNS=36</code> in client .env</span>
+              </span>
+            </label>
+          </div>
+        </div>
+        <!-- Hidden inputs carry the actual values submitted -->
+        <input type="hidden" id="reg-font-size" value="9" />
+        <input type="hidden" id="reg-columns" value="24" />
+        <button type="submit" class="btn btn-primary" id="register-btn">Register Printer</button>
+        <div id="register-feedback" class="feedback hidden"></div>
+      </form>
+      <div id="api-key-box" class="api-key-box hidden">
+        <h2>🎉 Printer Registered!</h2>
+        <p>Save your API key — it won't be shown again.</p>
+        <div class="api-key-row">
+          <code id="api-key-value"></code>
+          <button class="btn btn-sm" id="copy-key-btn">Copy</button>
+        </div>
+        <p class="printer-id-note">Printer ID: <code id="printer-id-value"></code></p>
+        <div class="next-steps">
+          <strong>Next steps:</strong>
+          <ol>
+            <li>Copy the <code>client/</code> folder to your machine.</li>
+            <li>Run <code>npm install</code> inside it.</li>
+            <li>Copy <code>.env.example</code> → <code>.env</code>, set your API key, server URL, and <code>PRINT_COLUMNS</code> to match your paper width above.</li>
+            <li>Run <code>node client.js</code>.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── API TAB ────────────────────────────────────────────────────────── -->
+    <section class="tab-panel" id="tab-api">
+      <div class="panel-header">
+        <h1>API Reference</h1>
+        <p>Integrate PrintBridge with SMS, bots, Genesys, or any HTTP client.</p>
+      </div>
+      <div class="api-docs">
+
+        <div class="endpoint">
+          <div class="endpoint-header"><span class="method get">GET</span><code>/api/printers</code></div>
+          <p>List all active printers. Each printer includes <code>id</code>, <code>name</code>, <code>location</code>, <code>description</code>, <code>columns</code>, <code>font_size</code>, and <code>last_seen</code>.</p>
+          <pre><code>{
+  "printers": [
+    {
+      "id": "uuid",
+      "name": "Front Desk",
+      "location": "Lobby",
+      "columns": 24,
+      "font_size": 9,
+      "last_seen": "2026-05-06T12:00:00"
+    }
+  ]
+}</code></pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-header"><span class="method post">POST</span><code>/api/messages</code></div>
+          <p>Send a message to a printer. Supports plain text, image upload (multipart), image by URL, and OAuth2-authenticated image URLs.</p>
+          <div class="endpoint-auth">🔑 Optional: <code>X-API-Key</code> header — tags message as API source. API and email sources always word-wrap. Web sources respect the <code>word_wrap</code> field.</div>
+
+          <p><strong>Text message</strong></p>
+          <pre><code>POST /api/messages
+Content-Type: application/json
+
+{
+  "printer_id":  "uuid",
+  "sender_name": "Jane Smith",       // optional — shown in From: header
+  "body":        "Hello! 👋",        // supports unicode and emoji
+  "word_wrap":   1,                  // 1 = wrap at column limit, 0 = as-is
+  "font_size":   9                   // 7 8 9 10 11 12 14 — affects body text size
+}</code></pre>
+
+          <p><strong>Image by URL</strong></p>
+          <pre><code>{
+  "printer_id": "uuid",
+  "image_url":  "https://example.com/photo.jpg"
+}</code></pre>
+
+          <p><strong>Image via OAuth2 (e.g. Genesys PureCloud MMS)</strong></p>
+          <pre><code>{
+  "printer_id":          "uuid",
+  "image_url":           "https://api-downloads.mypurecloud.com/api/v2/downloads/abc123",
+  "oauth_token_url":     "https://login.mypurecloud.com/oauth/token",
+  "oauth_client_id":     "your-client-id",
+  "oauth_client_secret": "your-client-secret"
+}</code></pre>
+
+          <p><strong>Image with explicit auth header</strong></p>
+          <pre><code>{
+  "printer_id":    "uuid",
+  "image_url":     "https://secure.example.com/image.jpg",
+  "image_headers": { "Authorization": "Bearer your-token" }
+}</code></pre>
+
+          <p><strong>Image upload (multipart/form-data)</strong></p>
+          <pre><code>POST /api/messages
+Content-Type: multipart/form-data
+
+printer_id = uuid
+image      = &lt;file&gt;</code></pre>
+
+          <p><strong>Response</strong></p>
+          <pre><code>{ "success": true, "message_id": "uuid", "status": "pending" }</code></pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-header"><span class="method get">GET</span><code>/api/messages/poll</code></div>
+          <p>Fetch and claim all pending messages for this printer. Used by the Windows print client. Marks claimed messages as <code>printing</code>.</p>
+          <div class="endpoint-auth">🔑 Requires <code>X-API-Key</code> header.</div>
+          <pre><code>{
+  "printer_id": "uuid",
+  "messages": [
+    {
+      "id":           "uuid",
+      "body":         "Hello!",
+      "image_path":   "filename.jpg",   // null if text-only
+      "sender_name":  "Jane",
+      "word_wrap":    1,
+      "font_size":    9,
+      "source":       "web",            // web | api | email
+      "created_at":   "2026-05-06T12:00:00"
+    }
+  ]
+}</code></pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-header"><span class="method patch">PATCH</span><code>/api/messages/:id</code></div>
+          <p>Report the print result back to the server. Called by the print client after each job.</p>
+          <div class="endpoint-auth">🔑 Requires <code>X-API-Key</code> header.</div>
+          <pre><code>{ "status": "printed" }
+// or on failure:
+{ "status": "failed", "error": "Printer offline" }</code></pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-header"><span class="method post">POST</span><code>/api/printers</code></div>
+          <p>Register a new printer. Returns a one-time API key — save it immediately.</p>
+          <pre><code>{
+  "name":        "Front Desk",
+  "description": "58mm thermal",   // optional
+  "location":    "Lobby",          // optional
+  "font_size":   9,                // default print font size
+  "columns":     24                // characters per line at chosen font size
+}
+
+// Response:
+{ "success": true, "api_key": "uuid", "printer": { ... } }</code></pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-header"><span class="method">EMAIL</span><code>smtp://yourserver:2525</code></div>
+          <p>Send email to <code>&lt;printer-id&gt;@print.local</code>. The email body and any image attachments are printed. The From address appears as the sender name.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="endpoint-header"><span class="method get">GET</span><code>/api/printers/:id/stats</code></div>
+          <p>Message counts for a printer broken down by status and source.</p>
+          <pre><code>{
+  "stats": {
+    "total": 42, "pending": 1, "printed": 40, "failed": 1,
+    "from_web": 20, "from_api": 18, "from_email": 4
+  }
+}</code></pre>
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ── ADMIN TAB ──────────────────────────────────────────────────────── -->
+    <section class="tab-panel" id="tab-admin">
+
+      <!-- Login gate -->
+      <div id="admin-login-panel">
+        <div class="panel-header">
+          <h1>Admin</h1>
+          <p>Enter your admin password to manage printers and view message history.</p>
+        </div>
+        <form id="admin-login-form" style="max-width:400px">
+          <div class="field">
+            <label for="admin-password"><span class="label-text">Password</span></label>
+            <input type="password" id="admin-password" autocomplete="current-password" placeholder="Admin password" />
+          </div>
+          <button type="submit" class="btn btn-primary" id="admin-login-btn">Sign In</button>
+          <div id="admin-login-feedback" class="feedback hidden"></div>
+        </form>
+      </div>
+
+      <!-- Admin dashboard (shown after login) -->
+      <div id="admin-dashboard" class="hidden">
+        <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1>Admin Dashboard</h1>
+            <p>Manage printers and view message history.</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <div id="admin-global-stats" class="admin-stat-row"></div>
+            <button class="btn btn-outline btn-sm" id="admin-logout-btn">Sign Out</button>
+          </div>
+        </div>
+
+        <!-- Printers management -->
+        <div class="admin-section">
+          <div class="admin-section-header">
+            <h2>Printers</h2>
+            <button class="btn btn-outline btn-sm" id="admin-refresh-printers">↻ Refresh</button>
+          </div>
+          <div id="admin-printers-table" class="admin-table-wrap">
+            <div class="admin-loading">Loading…</div>
+          </div>
+        </div>
+
+        <!-- Message archive -->
+        <div class="admin-section">
+          <div class="admin-section-header">
+            <h2>Message History</h2>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <select id="admin-filter-printer" class="admin-filter-select">
+                <option value="">All Printers</option>
+              </select>
+              <button class="btn btn-outline btn-sm" id="admin-load-more">Load More</button>
+            </div>
+          </div>
+          <div id="admin-messages-table" class="admin-table-wrap">
+            <div class="admin-loading">Loading…</div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+
+    <!-- ── SUBSCRIPTIONS TAB ─────────────────────────────────────────────── -->
+    <section class="tab-panel" id="tab-subscriptions">
+
+      <!-- Auth gate -->
+      <div id="sub-login-panel">
+        <div class="panel-header">
+          <h1>Subscription Admin</h1>
+          <p>Enter your printer's API key to manage its feed subscriptions.</p>
+        </div>
+        <form id="sub-login-form" style="max-width:420px">
+          <div class="field">
+            <label for="sub-api-key"><span class="label-text">Printer API Key</span></label>
+            <input type="password" id="sub-api-key" placeholder="Your printer's API key" autocomplete="off" />
+          </div>
+          <button type="submit" class="btn btn-primary" id="sub-login-btn">Sign In</button>
+          <div id="sub-login-feedback" class="feedback hidden"></div>
+        </form>
+      </div>
+
+      <!-- Subscription dashboard -->
+      <div id="sub-dashboard" class="hidden">
+        <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1>Subscriptions</h1>
+            <p id="sub-printer-label" style="color:var(--fg-muted);font-size:13px"></p>
+          </div>
+          <button class="btn btn-outline btn-sm" id="sub-logout-btn">Sign Out</button>
+        </div>
+
+        <!-- Add subscription -->
+        <div class="admin-section">
+          <div class="admin-section-header"><h2>Add Subscription</h2></div>
+          <form id="sub-add-form" style="display:flex;flex-direction:column;gap:12px;max-width:520px">
+            <div class="field" style="margin-bottom:0">
+              <label for="sub-name"><span class="label-text">Name</span></label>
+              <input type="text" id="sub-name" placeholder="e.g. XKCD Comics" maxlength="100" />
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label for="sub-url">
+                <span class="label-text">Feed URL</span>
+                <span class="label-hint"> — RSS, Atom, or paste https://xkcd.com for XKCD</span>
+              </label>
+              <input type="url" id="sub-url" placeholder="https://xkcd.com or https://example.com/feed.rss" />
+            </div>
+            <button type="submit" class="btn btn-primary" id="sub-add-btn" style="align-self:flex-start">Add Feed</button>
+            <div id="sub-add-feedback" class="feedback hidden"></div>
+          </form>
+        </div>
+
+        <!-- Subscription list -->
+        <div class="admin-section">
+          <div class="admin-section-header">
+            <h2>Active Subscriptions</h2>
+            <button class="btn btn-outline btn-sm" id="sub-refresh-btn">↻ Refresh</button>
+          </div>
+          <div id="sub-list" class="sub-list">
+            <div class="admin-loading">Loading…</div>
+          </div>
+        </div>
+
+        <!-- Known feeds reference -->
+        <div class="admin-section">
+          <div class="admin-section-header"><h2>Known Feeds</h2></div>
+          <div class="known-feeds">
+            <div class="known-feed-item" onclick="document.getElementById('sub-url').value='https://xkcd.com';document.getElementById('sub-name').value='XKCD'">
+              <strong>🤓 XKCD</strong><span>https://xkcd.com — daily webcomic with image</span>
+            </div>
+            <div class="known-feed-item" onclick="document.getElementById('sub-url').value='https://www.nasa.gov/feeds/iotd-feed/';document.getElementById('sub-name').value='NASA Image of the Day'">
+              <strong>🚀 NASA Image of the Day</strong><span>https://www.nasa.gov/feeds/iotd-feed/</span>
+            </div>
+            <div class="known-feed-item" onclick="document.getElementById('sub-url').value='https://hnrss.org/frontpage';document.getElementById('sub-name').value='Hacker News'">
+              <strong>🔶 Hacker News Top</strong><span>https://hnrss.org/frontpage</span>
+            </div>
+            <div class="known-feed-item" onclick="document.getElementById('sub-url').value='https://www.theverge.com/rss/index.xml';document.getElementById('sub-name').value='The Verge'">
+              <strong>📱 The Verge</strong><span>https://www.theverge.com/rss/index.xml</span>
+            </div>
+            <div class="known-feed-item" onclick="document.getElementById('sub-url').value='https://feeds.bbci.co.uk/news/rss.xml';document.getElementById('sub-name').value='BBC News'">
+              <strong>🌍 BBC News</strong><span>https://feeds.bbci.co.uk/news/rss.xml</span>
+            </div>
+            <div class="known-feed-item" onclick="document.getElementById('sub-url').value='https://garfieldminusgarfield.net/rss';document.getElementById('sub-name').value='Garfield Minus Garfield'">
+              <strong>😿 Garfield Minus Garfield</strong><span>https://garfieldminusgarfield.net/rss</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ── PRINTER ADMIN TAB ─────────────────────────────────────────────── -->
+    <section class="tab-panel" id="tab-printer-admin">
+
+      <!-- Auth gate -->
+      <div id="pa-login-panel">
+        <div class="panel-header">
+          <h1>Printer Admin</h1>
+          <p>Enter your printer's API key to view messages and manage settings.</p>
+        </div>
+        <form id="pa-login-form" style="max-width:420px">
+          <div class="field">
+            <label for="pa-api-key"><span class="label-text">Printer API Key</span></label>
+            <input type="password" id="pa-api-key" placeholder="Your printer's API key" autocomplete="off" />
+          </div>
+          <button type="submit" class="btn btn-primary" id="pa-login-btn">Sign In</button>
+          <div id="pa-login-feedback" class="feedback hidden"></div>
+        </form>
+      </div>
+
+      <!-- Dashboard -->
+      <div id="pa-dashboard" class="hidden">
+
+        <!-- Header row: printer name + sign out -->
+        <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1 id="pa-printer-name">Printer Admin</h1>
+            <p id="pa-printer-meta" style="color:var(--fg-muted);font-size:12px"></p>
+          </div>
+          <button class="btn btn-outline btn-sm" id="pa-logout-btn">Sign Out</button>
+        </div>
+
+        <!-- Settings section -->
+        <div class="admin-section">
+          <div class="admin-section-header"><h2>Printer Settings</h2></div>
+          <form id="pa-settings-form" style="display:flex;flex-direction:column;gap:12px;max-width:500px">
+            <div class="field" style="margin-bottom:0">
+              <label for="pa-name"><span class="label-text">Name</span></label>
+              <input type="text" id="pa-name" maxlength="80" />
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label for="pa-description"><span class="label-text">Description</span><span class="label-hint"> Optional</span></label>
+              <input type="text" id="pa-description" maxlength="200" />
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label for="pa-location"><span class="label-text">Location</span><span class="label-hint"> Optional</span></label>
+              <input type="text" id="pa-location" maxlength="100" />
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label for="pa-columns">
+                <span class="label-text">Columns</span>
+                <span class="label-hint"> chars per line — 24 for 58mm, 36 for 80mm</span>
+              </label>
+              <input type="number" id="pa-columns" min="10" max="200" style="max-width:100px" />
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button type="submit" class="btn btn-primary btn-sm" id="pa-save-btn">Save Settings</button>
+              <div id="pa-settings-feedback" class="feedback hidden" style="margin:0;padding:6px 10px;font-size:12px"></div>
+            </div>
+          </form>
+        </div>
+
+        <!-- Messages section -->
+        <div class="admin-section">
+          <div class="admin-section-header">
+            <h2>Messages</h2>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <!-- View toggle -->
+              <div class="pa-view-toggle">
+                <button class="pa-view-btn active" id="pa-view-all">All Messages</button>
+                <button class="pa-view-btn" id="pa-view-threads">Threads</button>
+              </div>
+              <button class="btn btn-outline btn-sm" id="pa-load-more-btn" style="display:none">Load More</button>
+            </div>
+          </div>
+
+          <!-- All messages view -->
+          <div id="pa-all-view">
+            <div id="pa-messages-list" class="pa-message-list">
+              <div class="admin-loading">Loading…</div>
+            </div>
+          </div>
+
+          <!-- Threads view -->
+          <div id="pa-threads-view" class="hidden">
+            <div id="pa-thread-list" class="pa-thread-list">
+              <div class="admin-loading">Loading…</div>
+            </div>
+            <!-- Thread detail (shown when a thread is selected) -->
+            <div id="pa-thread-detail" class="hidden">
+              <div class="pa-thread-detail-header">
+                <button class="btn btn-outline btn-sm" id="pa-back-btn">← Back to Threads</button>
+                <span id="pa-thread-title" style="font-weight:600;color:var(--fg)"></span>
+              </div>
+              <div id="pa-thread-messages" class="pa-message-list"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <nav id="footer-nav">
+      <button class="nav-tab active" data-tab="send">Send Message</button>
+      <button class="nav-tab" data-tab="register">Register Printer</button>
+      <button class="nav-tab" data-tab="api">API Docs</button>
+      <button class="nav-tab" data-tab="admin">⚙ Super Admin</button>
+      <button class="nav-tab" data-tab="subscriptions">📡 Subscriptions</button>
+      <button class="nav-tab" data-tab="printer-admin">🖨️ Printer Admin</button>
+    </nav>
+    <div class="theme-picker" id="theme-picker">
+      <button class="theme-btn active" data-theme="dark" title="Dark Mode">🌑</button>
+      <button class="theme-btn" data-theme="light" title="Light Mode">☀️</button>
+      <button class="theme-btn" data-theme="rush" title="Premium Rush">🚲</button>
+      <button class="theme-btn" data-theme="beans" title="Beans">🫘</button>
+      <button class="theme-btn" data-theme="shrek" title="Shrek">🧅</button>
+      <button class="theme-btn" data-theme="transit" title="Public Transit">🚌</button>
+    </div>
+  </footer>
+
+  <!-- Message body modal -->
+  <div id="msg-modal" class="msg-modal-overlay hidden">
+    <div class="msg-modal-box">
+      <div class="msg-modal-header">
+        <span id="msg-modal-meta"></span>
+        <button id="msg-modal-close-btn" class="msg-modal-close">✕</button>
+      </div>
+      <pre id="msg-modal-body" class="msg-modal-body"></pre>
+      <div id="msg-modal-img" class="msg-modal-img hidden">
+        <img id="msg-modal-imgel" src="" alt="Message image" style="max-width:100%;border-radius:6px"/>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
