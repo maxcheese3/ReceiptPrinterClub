@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import NavMenu from './NavMenu';
+import ThemePickerModal from './ThemePickerModal';
 import type { Theme } from '../hooks/useTheme';
 
 interface LayoutProps {
@@ -12,6 +13,7 @@ interface LayoutProps {
 export default function Layout({ children, theme, onThemeChange }: LayoutProps) {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
 
   return (
     <>
@@ -46,7 +48,13 @@ export default function Layout({ children, theme, onThemeChange }: LayoutProps) 
           <>
             <div className="header-menu-backdrop" onClick={() => setMenuOpen(false)} />
             <div className="header-menu-dropdown">
-              <NavMenu onNavigate={() => setMenuOpen(false)} />
+              <NavMenu
+                onNavigate={() => setMenuOpen(false)}
+                onOpenThemePicker={() => {
+                  setMenuOpen(false);
+                  setThemePickerOpen(true);
+                }}
+              />
             </div>
           </>
         )}
@@ -54,30 +62,13 @@ export default function Layout({ children, theme, onThemeChange }: LayoutProps) 
 
       <main>{children}</main>
 
-      <footer>
-        <div className="theme-picker">
-          {(['dark', 'light', 'rush', 'beans', 'shrek', 'transit'] as const).map((t) => {
-            const labels: Record<string, string> = {
-              dark: '🌑', light: '☀️', rush: '🚲', beans: '🫘', shrek: '🧅', transit: '🚌',
-            };
-            const titles: Record<string, string> = {
-              dark: 'Dark Mode', light: 'Light Mode', rush: 'Premium Rush',
-              beans: 'Beans', shrek: 'Shrek', transit: 'Public Transit',
-            };
-            return (
-              <button
-                key={t}
-                className={`theme-btn${theme === t ? ' active' : ''}`}
-                data-theme={t}
-                title={titles[t]}
-                onClick={() => onThemeChange(t)}
-              >
-                {labels[t]}
-              </button>
-            );
-          })}
-        </div>
-      </footer>
+      {themePickerOpen && (
+        <ThemePickerModal
+          theme={theme}
+          onThemeChange={onThemeChange}
+          onClose={() => setThemePickerOpen(false)}
+        />
+      )}
     </>
   );
 }

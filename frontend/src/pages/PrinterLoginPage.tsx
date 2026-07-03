@@ -8,14 +8,14 @@ export default function PrinterLoginPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (apiKey) navigate('/printer/settings', { replace: true });
+    if (apiKey) navigate('/myprinter', { replace: true });
   }, [apiKey, navigate]);
 
-  if (apiKey) return <Navigate to="/printer/settings" replace />;
+  if (apiKey) return <Navigate to="/myprinter" replace />;
 
   function handleLogin(key: string) {
     login(key);
-    navigate('/printer/settings', { replace: true });
+    navigate('/myprinter', { replace: true });
   }
 
   return <PrinterLogin onLogin={handleLogin} />;

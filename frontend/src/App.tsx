@@ -31,13 +31,13 @@ export default function App() {
             <Route path="/docs" element={<ApiDocs />} />
             <Route path="/admin" element={<SuperAdmin onOpenModal={setModalMessage} />} />
             {/* Legacy redirects */}
-            <Route path="/subscriptions" element={<Navigate to="/printer/subscriptions" replace />} />
-            <Route path="/printer-admin" element={<Navigate to="/printer/settings" replace />} />
+            <Route path="/subscriptions" element={<Navigate to="/myprinter/subscriptions" replace />} />
+            <Route path="/printer-admin" element={<Navigate to="/myprinter" replace />} />
             {/* Printer section */}
-            <Route path="/printer/login" element={<PrinterLoginPage />} />
-            <Route path="/printer/settings" element={<PrinterSettings />} />
-            <Route path="/printer/message-history" element={<PrinterMessageHistory />} />
-            <Route path="/printer/subscriptions" element={<PrinterSubscriptions />} />
+            <Route path="/myprinter/login" element={<PrinterLoginPage />} />
+            <Route path="/myprinter" element={<PrinterSettings />} />
+            <Route path="/myprinter/message-history" element={<PrinterMessageHistory />} />
+            <Route path="/myprinter/subscriptions" element={<PrinterSubscriptions />} />
             <Route path="*" element={<Navigate to="/send-message" replace />} />
           </Routes>
         </Layout>

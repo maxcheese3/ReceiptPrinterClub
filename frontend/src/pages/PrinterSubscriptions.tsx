@@ -91,7 +91,7 @@ export default function PrinterSubscriptions() {
     } catch { /**/ }
   }
 
-  if (!apiKey) return <Navigate to="/printer/login" replace />;
+  if (!apiKey) return <Navigate to="/myprinter/login" replace />;
 
   return (
     <PrinterPageLayout>

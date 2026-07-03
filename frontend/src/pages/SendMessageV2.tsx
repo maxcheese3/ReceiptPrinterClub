@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import PrinterMultiSelect from '../components/PrinterMultiSelect';
 import { loadSavedIds, saveIds } from '../components/PrinterChecklist';
 import { usePrinters } from '../hooks/usePrinters';
 import { useDithering } from '../hooks/useDithering';
 import { useImageResize } from '../hooks/useImageResize';
 import type { DitherMethod } from '../hooks/useDithering';
+import PrintConfirmModal from '../components/PrintConfirmModal';
+import type { PrintResult } from '../components/PrintConfirmModal';
 
 const GRAYSCALE_KEY = 'printbridge_grayscale_v2';
 const SENDER_NAME_KEY = 'printbridge_sender_name';
@@ -24,7 +25,6 @@ export default function SendMessageV2() {
   const { processImage } = useDithering();
   const { resize } = useImageResize();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
 
   // TO: printer selection — URL param takes priority over localStorage
   const [selectedIds, setSelectedIds] = useState<string[]>(() => {
@@ -86,29 +86,25 @@ export default function SendMessageV2() {
 
   // Submit
   const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
-  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Auto-dismiss toast
-  useEffect(() => {
-    if (!feedback) return;
-    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
-    const delay = 7000;
-    feedbackTimerRef.current = setTimeout(() => setFeedback(null), delay);
-    return () => { if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current); };
-  }, [feedback]);
+  const [printResult, setPrintResult] = useState<PrintResult | null>(null);
 
   // Hidden file inputs
   const fileBrowseRef = useRef<HTMLInputElement>(null);
   const fileCaptureRef = useRef<HTMLInputElement>(null);
 
-  // Column counter
+  const isMobile = /Mobi|Android|iPhone|iPad|IEMobile/i.test(navigator.userAgent);
+
+  // Column counter — use the narrowest printer's actual column count, scaled to the selected font size
   const maxCols = (() => {
     if (selectedIds.length === 0) return colsForFontSize(fontSize);
     const cols = selectedIds.map((id) => {
       const p = printerMap[id];
       if (!p) return colsForFontSize(fontSize);
-      return (p.font_size ?? 9) === fontSize ? (p.columns ?? colsForFontSize(fontSize)) : colsForFontSize(fontSize);
+      const printerFontSize = p.font_size ?? 9;
+      const printerCols = p.columns ?? colsForFontSize(printerFontSize);
+      return printerFontSize === fontSize
+        ? printerCols
+        : Math.round(printerCols * printerFontSize / fontSize);
     });
     return Math.min(...cols);
   })();
@@ -166,11 +162,6 @@ export default function SendMessageV2() {
 
   useEffect(() => { scheduleRender(); }, [scheduleRender]);
 
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.fontSize = `${Math.round(fontSize * 96 / 72)}px`;
-    }
-  }, [fontSize]);
 
   function setImage(file: File) {
     setCurrentFile(file);
@@ -254,13 +245,13 @@ export default function SendMessageV2() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setFeedback(null);
+    setPrintResult(null);
     if (selectedIds.length === 0) {
-      setFeedback({ type: 'error', msg: 'Please select at least one printer.' });
+      setPrintResult({ status: 'error', printerNames: [], senderName: '', errors: ['Please select at least one printer.'] });
       return;
     }
     if (!body.trim() && !currentFile) {
-      setFeedback({ type: 'error', msg: 'Please enter a message or attach an image.' });
+      setPrintResult({ status: 'error', printerNames: [], senderName: '', errors: ['Please enter a message or attach an image.'] });
       return;
     }
     setSubmitting(true);
@@ -283,27 +274,37 @@ export default function SendMessageV2() {
           if (!res.ok) {
             let msg = `Server error (${res.status})`;
             try { const d = await res.json() as { error?: string }; if (d.error) msg = d.error; } catch { /**/ }
-            return { success: false, error: msg };
+            return { success: false, error: msg, printer_id };
           }
-          return res.json() as Promise<{ success: boolean }>;
+          const data = await res.json() as { success: boolean };
+          return { ...data, printer_id };
         })
       );
-      const allOk = results.every((d) => (d as { success: boolean }).success);
+      const allOk = results.every((d) => d.success);
+      const printerNames = selectedIds.map((id) => printerMap[id]?.name ?? id);
       if (allOk) {
-        const label = selectedIds.length > 1 ? `${selectedIds.length} printers` : 'printer';
-        setFeedback({ type: 'success', msg: `✓ Sent to ${label}! Printing shortly.` });
+        setPrintResult({
+          status: 'success',
+          printerNames,
+          senderName: senderName.trim(),
+          errors: [],
+        });
         setBody('');
         clearImage();
         reloadPrinters();
       } else {
         const errs = (results as { success: boolean; error?: string }[])
           .filter((d) => !d.success)
-          .map((d) => d.error)
-          .join('; ');
-        setFeedback({ type: 'error', msg: errs || 'Some messages failed.' });
+          .map((d) => d.error ?? 'Unknown error');
+        setPrintResult({
+          status: 'error',
+          printerNames,
+          senderName: senderName.trim(),
+          errors: errs.length > 0 ? errs : ['Some messages failed.'],
+        });
       }
     } catch {
-      setFeedback({ type: 'error', msg: 'Network error — could not reach the server.' });
+      setPrintResult({ status: 'error', printerNames: [], senderName: '', errors: ['Network error — could not reach the server.'] });
     } finally {
       setSubmitting(false);
     }
@@ -343,7 +344,7 @@ export default function SendMessageV2() {
               setSenderName(e.target.value);
               localStorage.setItem(SENDER_NAME_KEY, e.target.value);
             }}
-            placeholder="Your name"
+            placeholder="Your name (optional)"
             maxLength={100}
           />
         </div>
@@ -416,15 +417,18 @@ export default function SendMessageV2() {
               maxLength={5000}
               spellCheck={activeTab === 'text'}
               className={wordWrap ? 'word-wrap-on' : ''}
+              style={{ fontSize: '16px' }}
               value={body}
               onChange={(e) => { setBody(e.target.value); updateCursorStats(); autoResize(); }}
               onKeyUp={() => { updateCursorStats(); autoResize(); }}
               onClick={updateCursorStats}
             />
             <div className="send-v2-char-bar">
-              <span className={cursorLineLen > maxCols ? 'col-over' : ''}>
-                Col {cursorLineLen} / {maxCols}
-              </span>
+              {activeTab === 'ascii' && (
+                <span className={cursorLineLen > maxCols ? 'col-over' : ''}>
+                  Col {cursorLineLen} / {maxCols}
+                </span>
+              )}
               <span>{[...body].length} chars</span>
             </div>
           </div>
@@ -448,7 +452,7 @@ export default function SendMessageV2() {
                 onChange={() => { const f = fileCaptureRef.current?.files?.[0]; if (f) setImage(f); }}
               />
 
-              {!currentFile && !webcamActive && (
+              {!isMobile && !currentFile && !webcamActive && (
                 <div
                   className={`send-v2-attach-add-btn${isDragging ? ' drag-over' : ''}`}
                   onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -460,21 +464,40 @@ export default function SendMessageV2() {
                     if (file?.type.startsWith('image/')) setImage(file);
                   }}
                 >
-                  <span
-                    className="send-v2-attach-action"
-                    role="button"
-                    tabIndex={0}
+                  <span className="send-v2-attach-title">Add Photo or File</span>
+                  <span className="send-v2-attach-hint">Drag &amp; drop files or photos here</span>
+                  <div className="send-v2-attach-actions">
+                    <span
+                      className="send-v2-attach-action"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => fileBrowseRef.current?.click()}
+                      onKeyDown={(e) => e.key === 'Enter' && fileBrowseRef.current?.click()}
+                    >+ attachment</span>
+                    <span className="send-v2-attach-sep">·</span>
+                    <span
+                      className="send-v2-attach-action"
+                      role="button"
+                      tabIndex={0}
+                      onClick={startWebcam}
+                      onKeyDown={(e) => { if (e.key === 'Enter') startWebcam(e as unknown as React.MouseEvent); }}
+                    >take photo</span>
+                  </div>
+                </div>
+              )}
+
+              {isMobile && !currentFile && (
+                <div className="send-v2-mobile-btns">
+                  <button
+                    type="button"
+                    className="btn btn-outline"
                     onClick={() => fileBrowseRef.current?.click()}
-                    onKeyDown={(e) => e.key === 'Enter' && fileBrowseRef.current?.click()}
-                  >+ attachment</span>
-                  <span className="send-v2-attach-sep">·</span>
-                  <span
-                    className="send-v2-attach-action"
-                    role="button"
-                    tabIndex={0}
-                    onClick={startWebcam}
-                    onKeyDown={(e) => { if (e.key === 'Enter') startWebcam(e as unknown as React.MouseEvent); }}
-                  >take photo</span>
+                  >Add File</button>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => fileCaptureRef.current?.click()}
+                  >Take Photo</button>
                 </div>
               )}
 
@@ -570,7 +593,7 @@ export default function SendMessageV2() {
 
         <button type="submit" className="btn btn-primary" disabled={submitting}>
           <svg viewBox="0 0 20 20" fill="none"><path d="M3 10l14-7-7 14V10H3z" fill="currentColor" /></svg>
-          {submitting ? 'Sending…' : selectedIds.length > 1 ? 'Send to Printers' : 'Send to Printer'}
+          {submitting ? 'PRINTING…' : 'PRINT'}
         </button>
 
         <Link to="/send" className="send-v2-legacy-link">Use legacy send page</Link>
@@ -579,20 +602,7 @@ export default function SendMessageV2() {
 
     </section>
 
-    {feedback && createPortal(
-      <div className={`send-v2-toast send-v2-toast--${feedback.type}`} role="status">
-        <span>{feedback.msg}</span>
-        <button
-          type="button"
-          className="send-v2-toast-close"
-          aria-label="Dismiss"
-          onClick={() => setFeedback(null)}
-        >
-          ✕
-        </button>
-      </div>,
-      document.body
-    )}
+    <PrintConfirmModal result={printResult} onClose={() => setPrintResult(null)} />
     </>
   );
 }

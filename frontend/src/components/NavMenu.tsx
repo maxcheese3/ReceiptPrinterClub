@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { usePrinterAuth } from '../contexts/PrinterAuthContext';
 
 const PUBLIC_ITEMS = [
@@ -8,24 +8,17 @@ const PUBLIC_ITEMS = [
 ];
 
 const PRINTER_ITEMS = [
-  { to: '/printer/settings',        label: 'Settings' },
-  { to: '/printer/message-history', label: 'Message History' },
-  { to: '/printer/subscriptions',   label: 'Subscriptions' },
+  { to: '/myprinter/message-history', label: 'Message History' },
+  { to: '/myprinter/subscriptions',   label: 'Subscriptions' },
 ];
 
 interface NavMenuProps {
   onNavigate?: () => void;
+  onOpenThemePicker?: () => void;
 }
 
-export default function NavMenu({ onNavigate }: NavMenuProps) {
-  const { apiKey, logout } = usePrinterAuth();
-  const navigate = useNavigate();
-
-  function handleLogout() {
-    logout();
-    onNavigate?.();
-    navigate('/send-message');
-  }
+export default function NavMenu({ onNavigate, onOpenThemePicker }: NavMenuProps) {
+  const { apiKey } = usePrinterAuth();
 
   return (
     <nav id="nav-menu">
@@ -41,6 +34,17 @@ export default function NavMenu({ onNavigate }: NavMenuProps) {
       ))}
       <div className="nav-menu-divider" />
 
+      <button
+        className="nav-tab nav-tab-theme"
+        onClick={() => {
+          onNavigate?.();
+          onOpenThemePicker?.();
+        }}
+      >
+        Theme
+      </button>
+      <div className="nav-menu-divider" />
+
       {apiKey ? (
         <>
           {PRINTER_ITEMS.map(({ to, label }) => (
@@ -53,11 +57,14 @@ export default function NavMenu({ onNavigate }: NavMenuProps) {
               {label}
             </NavLink>
           ))}
-          <div className="nav-menu-divider" />
-          <button className="nav-tab nav-menu-logout" onClick={handleLogout}>
-            Sign Out
-          </button>
-        </>
+          <NavLink
+            to="/myprinter"
+            className={({ isActive }) => `nav-tab${isActive ? ' active' : ''}`}
+            onClick={onNavigate}
+          >
+            My Printer
+          </NavLink>
+</>
       ) : (
         <>
           <NavLink
@@ -68,7 +75,7 @@ export default function NavMenu({ onNavigate }: NavMenuProps) {
             Register Printer
           </NavLink>
           <NavLink
-            to="/printer/login"
+            to="/myprinter"
             className={({ isActive }) => `nav-tab${isActive ? ' active' : ''}`}
             onClick={onNavigate}
           >
