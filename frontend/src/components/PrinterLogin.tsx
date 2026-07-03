@@ -36,7 +36,7 @@ export default function PrinterLogin({ onLogin }: PrinterLoginProps) {
     <section className="tab-panel active">
       <div id="pa-login-panel">
         <div className="panel-header">
-          <h1>Printer Admin</h1>
+          <h1>My Printer</h1>
           <p>Enter your printer's API key to manage settings, messages, and subscriptions.</p>
         </div>
         <form onSubmit={handleSubmit} style={{ maxWidth: 420 }}>
@@ -45,6 +45,7 @@ export default function PrinterLogin({ onLogin }: PrinterLoginProps) {
             <input
               type="password"
               id="pa-api-key"
+              className="admin-api-input"
               placeholder="Your printer's API key"
               autoComplete="off"
               value={keyInput}

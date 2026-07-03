@@ -4,7 +4,8 @@ import { usePrinterAuth } from '../contexts/PrinterAuthContext';
 import PrinterPageLayout from '../components/PrinterPageLayout';
 import type { Message, Thread } from '../types/api';
 
-const PA_PAGE = 50;
+const PA_INITIAL = 10;
+const PA_MORE    = 25;
 
 function formatTime(isoStr: string): string {
   return new Date(isoStr + 'Z').toLocaleString(undefined, {
@@ -30,8 +31,9 @@ export default function PrinterMessageHistory() {
 
   const loadMessages = useCallback(async (reset = false) => {
     const offset = reset ? 0 : msgOffset;
+    const limit  = reset ? PA_INITIAL : PA_MORE;
     try {
-      const res = await authFetch(`/api/printer-admin/messages?limit=${PA_PAGE}&offset=${offset}`);
+      const res = await authFetch(`/api/printer-admin/messages?limit=${limit}&offset=${offset}`);
       const data = await res.json() as { messages: Message[] };
       const msgs = data.messages ?? [];
       if (reset) {
@@ -41,7 +43,7 @@ export default function PrinterMessageHistory() {
         setMessages((prev) => [...prev, ...msgs]);
         setMsgOffset((prev) => prev + msgs.length);
       }
-      setHasMore(msgs.length >= PA_PAGE);
+      setHasMore(msgs.length >= limit);
     } catch { /**/ }
   }, [authFetch, msgOffset]);
 
@@ -76,36 +78,40 @@ export default function PrinterMessageHistory() {
     else loadMessages(true);
   }
 
-  if (!apiKey) return <Navigate to="/printer/login" replace />;
+  if (!apiKey) return <Navigate to="/myprinter/login" replace />;
 
   return (
     <PrinterPageLayout>
       <div className="admin-section">
         <div className="admin-section-header">
           <h2>Messages</h2>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div className="pa-view-toggle">
-              <button
-                className={`pa-view-btn${view === 'all' ? ' active' : ''}`}
-                onClick={() => switchView('all')}
-              >All Messages</button>
-              <button
-                className={`pa-view-btn${view === 'threads' ? ' active' : ''}`}
-                onClick={() => switchView('threads')}
-              >Threads</button>
-            </div>
-            {view === 'all' && hasMore && (
-              <button className="btn btn-outline btn-sm" onClick={() => loadMessages(false)}>Load More</button>
-            )}
+          <div className="pa-view-toggle">
+            <button
+              className={`pa-view-btn${view === 'all' ? ' active' : ''}`}
+              onClick={() => switchView('all')}
+            >All Messages</button>
+            <button
+              className={`pa-view-btn${view === 'threads' ? ' active' : ''}`}
+              onClick={() => switchView('threads')}
+            >Threads</button>
           </div>
         </div>
 
         {view === 'all' && (
-          <div className="pa-message-list">
-            {messages.length === 0
-              ? <div className="admin-loading">No messages yet.</div>
-              : messages.map((m) => <MessageCard key={m.id} message={m} />)}
-          </div>
+          <>
+            <div className="pa-message-list">
+              {messages.length === 0
+                ? <div className="admin-loading">No messages yet.</div>
+                : messages.map((m) => <MessageCard key={m.id} message={m} />)}
+            </div>
+            {hasMore && (
+              <div style={{ textAlign: 'center', marginTop: 12 }}>
+                <button className="btn btn-outline btn-sm" onClick={() => loadMessages(false)}>
+                  Load More
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {view === 'threads' && !activeThread && (

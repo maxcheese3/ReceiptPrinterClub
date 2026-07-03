@@ -50,7 +50,7 @@ export default function PrinterSettings() {
     }
   }
 
-  if (!apiKey) return <Navigate to="/printer/login" replace />;
+  if (!apiKey) return <Navigate to="/myprinter/login" replace />;
 
   return (
     <PrinterPageLayout>
@@ -58,24 +58,24 @@ export default function PrinterSettings() {
         <div className="admin-section-header"><h2>Settings</h2></div>
         <form onSubmit={handleSaveSettings} style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 500 }}>
           <div className="field" style={{ marginBottom: 0 }}>
-            <label htmlFor="pa-name"><span className="label-text">Name</span></label>
+            <label htmlFor="pa-name"><span className="label-text">Name *</span></label>
             <input type="text" id="pa-name" maxLength={80} value={paName} onChange={(e) => setPaName(e.target.value)} />
           </div>
           <div className="field" style={{ marginBottom: 0 }}>
             <label htmlFor="pa-description">
-              <span className="label-text">Description</span><span className="label-hint"> Optional</span>
+              <span className="label-text">Description</span>
             </label>
             <input type="text" id="pa-description" maxLength={200} value={paDesc} onChange={(e) => setPaDesc(e.target.value)} />
           </div>
           <div className="field" style={{ marginBottom: 0 }}>
             <label htmlFor="pa-location">
-              <span className="label-text">Location</span><span className="label-hint"> Optional</span>
+              <span className="label-text">Location</span>
             </label>
             <input type="text" id="pa-location" maxLength={100} value={paLocation} onChange={(e) => setPaLocation(e.target.value)} />
           </div>
           <div className="field" style={{ marginBottom: 0 }}>
             <label htmlFor="pa-columns">
-              <span className="label-text">Columns</span>
+              <span className="label-text">Columns *</span>
               <span className="label-hint"> chars per line — 24 for 58mm, 36 for 80mm</span>
             </label>
             <input
@@ -88,7 +88,7 @@ export default function PrinterSettings() {
               onChange={(e) => setPaColumns(Number(e.target.value))}
             />
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16 }}>
             <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
               {saving ? 'Saving…' : 'Save Settings'}
             </button>

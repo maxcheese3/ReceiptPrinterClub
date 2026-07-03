@@ -142,8 +142,8 @@ export default function SuperAdmin({ onOpenModal }: SuperAdminProps) {
       <section className="tab-panel active">
         <div id="admin-login-panel">
           <div className="panel-header">
-            <h1>Admin</h1>
-            <p>Enter your admin password to manage printers and view message history.</p>
+            <h1>Super Admin</h1>
+            <p>For advanced printer god powers.</p>
           </div>
           <form onSubmit={handleLogin} style={{ maxWidth: 400 }}>
             <div className="field">
@@ -151,6 +151,7 @@ export default function SuperAdmin({ onOpenModal }: SuperAdminProps) {
               <input
                 type="password"
                 id="admin-password"
+                className="admin-api-input"
                 autoComplete="current-password"
                 placeholder="Admin password"
                 value={password}
@@ -175,7 +176,7 @@ export default function SuperAdmin({ onOpenModal }: SuperAdminProps) {
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}
         >
           <div>
-            <h1>Admin Dashboard</h1>
+            <h1>Super Admin Dashboard</h1>
             <p>Manage printers and view message history.</p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
