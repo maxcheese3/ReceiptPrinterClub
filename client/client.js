@@ -34,13 +34,19 @@ const LOG_LEVEL       = process.env.LOG_LEVEL || "info";
 const PRINTER_NAME    = process.env.PRINTER_NAME   || "";
 const PRINT_COLUMNS   = parseInt(process.env.PRINT_COLUMNS    || "24", 10);
 
-// Same column lookup table as the web UI — maps font size (pt) to chars per line.
-// Used so word wrap matches what the user saw in the browser at each font size.
-const FONT_SIZE_COLS = { 7: 31, 8: 27, 9: 24, 10: 22, 11: 20, 12: 18, 14: 16 };
-function colsForFontSize(pt) {
-  return FONT_SIZE_COLS[pt] || Math.round(24 * 9 / pt);
-}
 const PRINT_FONT_SIZE = parseInt(process.env.PRINT_FONT_SIZE  || "9",  10);
+
+// Column count for a given font size, scaled from THIS printer's real width.
+// PRINT_COLUMNS is how many baseline-font (PRINT_FONT_SIZE) characters fit across
+// the paper, so the wrap width for any other font size scales inversely with size:
+//   wrapCols = PRINT_COLUMNS * (PRINT_FONT_SIZE / pt)
+// At the baseline font this returns exactly PRINT_COLUMNS; a smaller font yields
+// more columns and a larger font fewer. This respects the printer's actual paper
+// width (e.g. 36 for 80mm) instead of assuming a fixed 58mm/24-col printer.
+function colsForFontSize(pt) {
+  const size = pt || PRINT_FONT_SIZE;
+  return Math.max(1, Math.round(PRINT_COLUMNS * PRINT_FONT_SIZE / size));
+}
 
 const PS_TEXT   = path.join(__dirname, "print-text.ps1");
 const ARCHIVE_ENABLED = process.env.ARCHIVE_ENABLED !== "false";
