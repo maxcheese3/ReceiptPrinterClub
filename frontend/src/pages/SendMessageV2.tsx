@@ -12,6 +12,10 @@ import type { PrintResult } from '../components/PrintConfirmModal';
 const GRAYSCALE_KEY = 'printbridge_grayscale_v2';
 const SENDER_NAME_KEY = 'printbridge_sender_name';
 const FONT_SIZE_KEY = 'printbridge_font_size';
+const ACTIVE_TAB_KEY = 'printbridge_active_tab';
+const WORD_WRAP_KEY = 'printbridge_word_wrap';
+const DITHER_METHOD_KEY = 'printbridge_dither_method';
+const SHOW_ADVANCED_KEY = 'printbridge_show_advanced';
 const FONT_SIZE_COLS: Record<number, number> = { 7: 31, 8: 27, 9: 24, 10: 22, 11: 20, 12: 18, 14: 16 };
 
 function colsForFontSize(pt: number): number {
@@ -45,13 +49,22 @@ export default function SendMessageV2() {
   );
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<ActiveTab>('text');
-  const [wordWrap, setWordWrap] = useState(true);
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    const saved = localStorage.getItem(ACTIVE_TAB_KEY);
+    return (saved === 'ascii' ? 'ascii' : 'text') as ActiveTab;
+  });
+  const [wordWrap, setWordWrap] = useState(() => {
+    const saved = localStorage.getItem(WORD_WRAP_KEY);
+    return saved === null ? true : saved === '1';
+  });
 
-  // Auto-set word wrap when switching tabs
-  useEffect(() => {
-    setWordWrap(activeTab === 'text');
-  }, [activeTab]);
+  function handleTabChange(tab: ActiveTab) {
+    setActiveTab(tab);
+    localStorage.setItem(ACTIVE_TAB_KEY, tab);
+    const defaultWrap = tab === 'text';
+    setWordWrap(defaultWrap);
+    localStorage.setItem(WORD_WRAP_KEY, defaultWrap ? '1' : '0');
+  }
 
   // Body
   const [body, setBody] = useState('');
@@ -64,14 +77,19 @@ export default function SendMessageV2() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Advanced toggle
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(() =>
+    localStorage.getItem(SHOW_ADVANCED_KEY) === '1'
+  );
 
   // Image state
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [previewSrc, setPreviewSrc] = useState('');
   const [processedBlob, setProcessedBlob] = useState<Blob | null>(null);
   const [isGrayscale, setIsGrayscale] = useState(() => localStorage.getItem(GRAYSCALE_KEY) === '1');
-  const [ditherMethod, setDitherMethod] = useState<DitherMethod>('ordered');
+  const [ditherMethod, setDitherMethod] = useState<DitherMethod>(() => {
+    const saved = localStorage.getItem(DITHER_METHOD_KEY);
+    return (['none', 'ordered', 'floyd', 'atkinson'].includes(saved ?? '') ? saved : 'ordered') as DitherMethod;
+  });
   const [brightness, setBrightness] = useState(0);
   const [contrast, setContrast] = useState(0);
   const [threshold, setThreshold] = useState(128);
@@ -355,21 +373,25 @@ export default function SendMessageV2() {
             <button
               type="button"
               className={`send-v2-tab-btn${activeTab === 'text' ? ' active' : ''}`}
-              onClick={() => setActiveTab('text')}
+              onClick={() => handleTabChange('text')}
             >
               Text
             </button>
             <button
               type="button"
               className={`send-v2-tab-btn${activeTab === 'ascii' ? ' active' : ''}`}
-              onClick={() => setActiveTab('ascii')}
+              onClick={() => handleTabChange('ascii')}
             >
               ASCII Art
             </button>
             <button
               type="button"
               className={`send-v2-tabs-advanced${showAdvanced ? ' open' : ''}`}
-              onClick={() => setShowAdvanced((v) => !v)}
+              onClick={() => {
+                const next = !showAdvanced;
+                setShowAdvanced(next);
+                localStorage.setItem(SHOW_ADVANCED_KEY, next ? '1' : '0');
+              }}
               title="Advanced options"
             >
               Aa
@@ -401,7 +423,10 @@ export default function SendMessageV2() {
                   id="v2-word-wrap"
                   type="checkbox"
                   checked={wordWrap}
-                  onChange={(e) => setWordWrap(e.target.checked)}
+                  onChange={(e) => {
+                    setWordWrap(e.target.checked);
+                    localStorage.setItem(WORD_WRAP_KEY, e.target.checked ? '1' : '0');
+                  }}
                 />
                 <span className="toggle-track"><span className="toggle-thumb" /></span>
               </label>
@@ -528,7 +553,11 @@ export default function SendMessageV2() {
                           id="v2-dither-method"
                           className="image-adjust-select"
                           value={ditherMethod}
-                          onChange={(e) => setDitherMethod(e.target.value as DitherMethod)}
+                          onChange={(e) => {
+                            const m = e.target.value as DitherMethod;
+                            setDitherMethod(m);
+                            localStorage.setItem(DITHER_METHOD_KEY, m);
+                          }}
                         >
                           <option value="none">None (solid threshold)</option>
                           <option value="ordered">Ordered (Bayer 4×4)</option>
