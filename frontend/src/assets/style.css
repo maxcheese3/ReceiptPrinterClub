@@ -1551,8 +1551,8 @@ footer a:hover { text-decoration: underline; }
   border-color: var(--accent);
   background: var(--bg-card);
 }
-.known-feed-item strong { color: var(--fg); white-space: nowrap; }
-.known-feed-item span   { color: var(--fg-muted); font-size: 12px; }
+.known-feed-item strong { color: var(--fg); white-space: nowrap; flex-shrink: 0; }
+.known-feed-item span   { color: var(--fg-muted); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Printer Admin ───────────────────────────────────────────────────────────── */
 .pa-view-toggle {
