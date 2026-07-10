@@ -1,0 +1,57 @@
+services:
+
+  # ── PrintBridge API server (local) ─────────────────────────────────────────
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: printbridge-server-local
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "2525:2525"
+    volumes:
+      - printbridge-data-local:/app/data
+      - ./server/public:/app/public
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - SMTP_PORT=2525
+      - DATA_DIR=/app/data
+      - UPLOAD_DIR=/app/data/uploads
+      - ADMIN_PASSWORD=${LOCAL_ADMIN_PASSWORD:-localpassword}
+      - ADMIN_TOKEN_SECRET=${LOCAL_ADMIN_TOKEN_SECRET:-localdevsecret}
+      - TRUST_PROXY=0
+    networks:
+      - local-internal
+
+  # ── Vite dev server (hot-reload at localhost:8008) ──────────────────────────
+  # VITE_API_TARGET is hardcoded here so it always hits the local server,
+  # regardless of what VITE_API_TARGET is set to in .env.
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: printbridge-frontend-local
+    restart: unless-stopped
+    ports:
+      - "8008:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules-local:/app/node_modules
+    environment:
+      - VITE_API_TARGET=http://server:3000
+    networks:
+      - local-internal
+    depends_on:
+      - server
+
+networks:
+  local-internal:
+    driver: bridge
+
+volumes:
+  printbridge-data-local:
+    driver: local
+  frontend-node-modules-local:
+    driver: local

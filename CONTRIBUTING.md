@@ -9,34 +9,73 @@
 
 ## Quick Start
 
+Two modes are available depending on what you need to test against.
+
+### Frontend against production
+
+Runs the Vite dev server and proxies API calls to the production server defined in `.env`.
+
 ```bash
-cp .env.example .env   # then fill in values
-make start             # spin up server + frontend dev containers
+cp .env.example .env   # set VITE_API_TARGET=https://your-prod-server
+make start
 ```
 
-The frontend is available at **http://localhost:8008** with hot-reload enabled.
+### Frontend against a local server
 
-### Common commands
+Runs the full stack locally. `VITE_API_TARGET` is hardcoded to the local server — `.env` is ignored for that variable.
+
+```bash
+make start-local
+```
+
+The admin password defaults to `localpassword`. Override it by setting `LOCAL_ADMIN_PASSWORD` in `.env`.
+
+The frontend is available at **http://localhost:8008** with hot-reload enabled.
+The local server API is directly accessible at **http://localhost:3000**.
+
+---
+
+## Common Commands
+
+### Dev stack (frontend → production API)
 
 | Command | What it does |
 |---------|-------------|
 | `make start` | Start the full dev stack |
 | `make stop` | Stop and remove containers |
 | `make restart` | Stop then start |
-| `make deploy` | Rebuild and force-recreate the frontend container |
+| `make build-frontend` | Rebuild the frontend container image |
+| `make deploy-frontend` | Rebuild and force-recreate the frontend container |
+| `make build-server` | Rebuild the server container image |
+| `make deploy-server` | Rebuild and force-recreate the server container |
+| `make logs` | Tail all container logs |
 | `make logs-frontend` | Tail frontend container logs |
+| `make logs-server` | Tail server container logs |
+
+### Local stack (frontend → local server)
+
+| Command | What it does |
+|---------|-------------|
+| `make start-local` | Start the local full stack |
+| `make stop-local` | Stop and remove local containers |
+| `make restart-local` | Stop then start local stack |
+| `make build-local-server` | Rebuild the local server image |
+| `make deploy-local-server` | Rebuild and force-recreate the local server |
+| `make logs-local` | Tail all local container logs |
+| `make logs-local-frontend` | Tail local frontend logs |
+| `make logs-local-server` | Tail local server logs |
 
 ---
 
-## Pointing at a Remote Server
+## Pointing the Dev Stack at a Different Remote Server
 
-To develop the frontend against a remote API instead of the local server container, set `VITE_API_TARGET` in `.env`:
+To change which remote server the dev stack proxies to, set `VITE_API_TARGET` in `.env`:
 
 ```env
 VITE_API_TARGET=https://print.example.com
 ```
 
-Then run `make deploy` to restart the frontend container with the new target.
+Then run `make deploy-frontend` to restart the frontend container with the new target.
 
 ---
 
