@@ -14,6 +14,7 @@ import PrinterLoginPage from './pages/PrinterLoginPage';
 import PrinterSettings from './pages/PrinterSettings';
 import PrinterMessageHistory from './pages/PrinterMessageHistory';
 import PrinterSubscriptions from './pages/PrinterSubscriptions';
+import About from './pages/About';
 import type { Message } from './types/api';
 
 export default function App() {
@@ -30,6 +31,7 @@ export default function App() {
             <Route path="/send-message" element={<SendMessageV2 />} />
             <Route path="/register" element={<RegisterPrinter />} />
             <Route path="/docs" element={<ApiDocs />} />
+            <Route path="/about" element={<About />} />
             <Route path="/admin/login" element={<SuperAdminLogin />} />
             <Route path="/admin" element={<SuperAdmin onOpenModal={setModalMessage} />} />
             {/* Legacy redirects */}

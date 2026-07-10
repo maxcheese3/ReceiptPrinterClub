@@ -3,8 +3,9 @@ import { usePrinterAuth } from '../contexts/PrinterAuthContext';
 
 const PUBLIC_ITEMS = [
   { to: '/send-message', label: 'Send Message' },
-  { to: '/docs',  label: 'API Docs' },
+  { to: '/about', label: 'About' },
   { to: '/admin', label: 'Admin' },
+  { to: '/docs',  label: 'API Docs' },
 ];
 
 const PRINTER_ITEMS = [
