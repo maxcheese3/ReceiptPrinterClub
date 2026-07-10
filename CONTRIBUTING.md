@@ -100,3 +100,38 @@ frontend/src/
 | `refactor/` | Code restructuring without behavior change |
 | `fix/` | Bug fixes |
 | `chore/` | Tooling, config, and meta changes |
+
+---
+
+## Versioning
+
+When merging a branch that represents a new version:
+
+1. Add a new entry to `CHANGELOG.md`:
+   `## [X.Y.Z] - YYYY-MM-DD — \`branch-name\``
+2. Update `frontend/src/version.ts` to match:
+   ```ts
+   export const APP_VERSION = 'X.Y.Z';
+   ```
+   These two must always be in sync. The version shown in the app UI is read from this file.
+
+---
+
+## Before Opening a PR
+
+- [ ] `npx tsc` passes with no errors (run from `frontend/`)
+- [ ] `CHANGELOG.md` updated if the change is user-facing or significant
+- [ ] `frontend/src/version.ts` bumped if this is a new version
+- [ ] `README.md` updated if routes, env vars, or file structure changed
+
+---
+
+## Secrets and Environment
+
+Never commit `.env` files. When introducing a new environment variable, add it to `.env.example` (root or `client/`) with a placeholder value so fresh installs know it exists.
+
+---
+
+## Documentation
+
+Operational guides live in `docs/`. Update the relevant guide if you change deployment steps, server setup, or infrastructure defaults. New guides go in `docs/` — not the root directory.
