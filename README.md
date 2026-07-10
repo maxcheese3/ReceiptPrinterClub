@@ -38,30 +38,46 @@ Windows client that runs in the background.
 
 ## Quick Start
 
-### 1. Start the server
+### 1. Configure environment
 
 ```bash
-# Clone / copy this repo to your Docker host
-cd printbridge
-
-# Start the server
-docker compose up -d
-
-# Server is now running at http://localhost:3000
+cp .env.example .env
 ```
 
-### 2. Register your printer
+Edit `.env`:
+```
+ADMIN_PASSWORD=your-secure-password
+DOMAIN=print.yourdomain.com   # if using Caddy with a real domain
+```
 
-Open `http://localhost:3000` → **Register Printer** tab.
+### 2. Start the server
+
+```bash
+docker compose up -d
+```
+
+By default the compose file includes a **Cloudflare Tunnel** for public access
+(no port forwarding needed). To use Caddy with a real domain instead, uncomment
+the `caddy` service and comment out `cloudflared` in `docker-compose.yml`.
+
+For local network use only, expose port 3000 directly:
+```yaml
+ports:
+  - "3000:3000"
+  - "2525:2525"
+```
+
+### 3. Register your printer
+
+Open the web UI → **Register** tab (or `POST /api/printers`).
 
 Fill in the name, description, and location. On submit you'll receive a
 **Printer ID** and **API Key** — save the API key somewhere safe, it's shown
 only once.
 
-### 3. Set up the Windows print client
+### 4. Set up the Windows print client
 
-You will need to install Node.js: https://nodejs.org/en/download
-Messages will print to your default printer.  You can specify a printer name in the .env if desired.
+You will need [Node.js](https://nodejs.org/en/download) installed on the Windows machine.
 
 Copy the `client/` folder to your Windows machine (the one with the printer).
 
@@ -76,24 +92,20 @@ notepad .env
 
 Edit `.env`:
 ```
-SERVER_URL=http://your-docker-host:3000
+SERVER_URL=http://your-server:3000
 API_KEY=paste-your-api-key-here
 ```
-You will need to allow script execution via Powersheel and install dotenv:
+
+Allow script execution and run the client:
 ```powershell
 Set-ExecutionPolicy Unrestricted -Scope CurrentUser
-npm install dotenv
-```
-
-Run the client:
-```powershell
 node client.js
 ```
 
 The client polls every 5 seconds for new messages and prints them automatically
-to the **Windows default printer**.
+to the Windows default printer.
 
-### 4. (Optional) Install as a Windows service
+### 5. (Optional) Install as a Windows service
 
 Run once as Administrator so the client starts on boot:
 
@@ -103,12 +115,27 @@ node install-service.js
 node install-service.js remove
 ```
 
-### 5. Send a message
+### 6. Send a message
 
-- **Web:** open `http://your-server:3000`, select the printer, type a message.
-- **Email:** send to `<printer-id>@your-server` on port 2525.
-- **API:** `POST /api/messages` with JSON body.
+- **Web:** open the web UI, select a printer, type a message
+- **Email:** send to `<printer-id>@your-server` on port 2525
+- **API:** `POST /api/messages` with JSON body
 
+---
+
+## Web UI Routes
+
+| Route | Description |
+|-------|-------------|
+| `/send-message` | Send a message to any printer |
+| `/register` | Register a new printer |
+| `/docs` | REST API documentation |
+| `/myprinter/login` | Printer owner login (API key) |
+| `/myprinter` | Printer settings dashboard |
+| `/myprinter/message-history` | Per-printer message history |
+| `/myprinter/subscriptions` | RSS/Atom feed subscriptions |
+| `/admin/login` | Super admin login |
+| `/admin` | Super admin dashboard (all printers + messages) |
 
 ---
 
@@ -210,15 +237,22 @@ RATE_LIMIT_MAX=10
 
 ### Server (`docker-compose.yml` → `environment`)
 
-| Variable              | Default     | Description                         |
-|-----------------------|-------------|-------------------------------------|
-| `PORT`                | `3000`      | HTTP port                           |
-| `SMTP_PORT`           | `2525`      | SMTP ingestion port                 |
-| `DATA_DIR`            | `/app/data` | Persistent data directory           |
-| `UPLOAD_DIR`          | `DATA_DIR/uploads` | Image upload directory      |
-| `RATE_LIMIT_WINDOW_MS`| `60000`     | Rate limit window (ms)              |
-| `RATE_LIMIT_MAX`      | `10`        | Max requests per window             |
-| `BASE_URL`            | `http://localhost:3000` | Public server URL          |
+| Variable              | Default                 | Description                                        |
+|-----------------------|-------------------------|----------------------------------------------------|
+| `PORT`                | `3000`                  | HTTP port                                          |
+| `SMTP_PORT`           | `2525`                  | SMTP ingestion port                                |
+| `DATA_DIR`            | `/app/data`             | Persistent data directory                          |
+| `UPLOAD_DIR`          | `DATA_DIR/uploads`      | Image upload directory                             |
+| `RATE_LIMIT_WINDOW_MS`| `60000`                 | Rate limit window (ms)                             |
+| `RATE_LIMIT_MAX`      | `10`                    | Max requests per window                            |
+| `ADMIN_PASSWORD`      | `changeme`              | Password for `/admin/login`                        |
+| `ADMIN_TOKEN_SECRET`  | *(random)*              | Optional: stable secret so tokens survive restarts |
+| `TRUST_PROXY`         | —                       | Set to `1` when behind a reverse proxy             |
+
+Generate a stable `ADMIN_TOKEN_SECRET`:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
 
 ### Client (`.env`)
 
@@ -235,49 +269,79 @@ RATE_LIMIT_MAX=10
 
 ## Exposing to the Internet
 
-To let people send messages from outside your LAN:
+### Option A — Cloudflare Tunnel (recommended, no port forwarding)
 
-1. Forward port `3000` (and optionally `2525`) on your router to the Docker host.
-2. Set `BASE_URL` in docker-compose to your public IP or domain.
-3. Consider putting Nginx or Caddy in front for HTTPS.
+1. Create a tunnel at [Cloudflare Zero Trust](https://one.dash.cloudflare.com) → Networks → Tunnels
+2. Set the public hostname to point at `http://server:3000`
+3. Paste the tunnel token into `.env`:
+   ```
+   CLOUDFLARE_TUNNEL_TOKEN=your-tunnel-token
+   ```
+4. The `cloudflared` service in `docker-compose.yml` handles the rest
 
-Example Caddy reverse proxy:
-```
-your-domain.com {
-  reverse_proxy localhost:3000
-}
-```
+### Option B — Caddy with a real domain
+
+1. Point a DNS A record at your server's public IP
+2. Forward ports 80 and 443 on your router to the Docker host
+3. Set `DOMAIN=print.yourdomain.com` in `.env`
+4. Uncomment the `caddy` service in `docker-compose.yml`
+
+Caddy obtains a free TLS cert from Let's Encrypt automatically.
 
 ---
 
 ## File Structure
 
 ```
-printbridge/
+receiptprinterclub/
+├── .env.example
 ├── docker-compose.yml
-├── server/
+├── Caddyfile
+├── frontend/                        # React + TypeScript SPA (Vite)
+│   ├── src/
+│   │   ├── App.tsx                  # Route definitions
+│   │   ├── pages/
+│   │   │   ├── SendMessageV2.tsx
+│   │   │   ├── RegisterPrinter.tsx
+│   │   │   ├── ApiDocs.tsx
+│   │   │   ├── SuperAdminLogin.tsx  # /admin/login
+│   │   │   ├── SuperAdmin.tsx       # /admin dashboard
+│   │   │   ├── PrinterLoginPage.tsx # /myprinter/login
+│   │   │   ├── PrinterSettings.tsx  # /myprinter
+│   │   │   ├── PrinterMessageHistory.tsx
+│   │   │   └── PrinterSubscriptions.tsx
+│   │   ├── components/
+│   │   ├── hooks/
+│   │   │   ├── useAdminAuth.ts
+│   │   │   └── useApiKeyAuth.ts
+│   │   └── contexts/
+│   │       └── PrinterAuthContext.tsx
+│   └── package.json
+├── server/                          # Express API + SMTP server
 │   ├── Dockerfile
-│   ├── package.json
-│   ├── public/
-│   │   ├── index.html
-│   │   ├── css/style.css
-│   │   └── js/app.js
-│   └── src/
-│       ├── index.js              # Express entry point
-│       ├── db/index.js           # SQLite access layer
-│       ├── middleware/
-│       │   ├── rateLimiter.js
-│       │   └── upload.js
-│       ├── routes/
-│       │   ├── messages.js
-│       │   └── printers.js
-│       └── services/
-│           └── smtp.js           # Inbound SMTP server
-└── client/
-    ├── package.json
+│   ├── src/
+│   │   ├── index.js                 # Express entry point
+│   │   ├── db/index.js              # SQLite access layer
+│   │   ├── middleware/
+│   │   │   ├── rateLimiter.js
+│   │   │   └── upload.js
+│   │   ├── routes/
+│   │   │   ├── admin.js             # Super admin API
+│   │   │   ├── printerAdmin.js      # Per-printer admin API
+│   │   │   ├── messages.js
+│   │   │   ├── printers.js
+│   │   │   └── subscriptions.js
+│   │   └── services/
+│   │       ├── smtp.js              # Inbound SMTP server
+│   │       └── feedPoller.js        # RSS/Atom feed polling
+│   └── public/                      # Built frontend (output of `npm run build`)
+└── client/                          # Windows print client
+    ├── client.js                    # Main polling + print client
+    ├── install-service.js           # Windows service installer
+    ├── print-text.ps1
+    ├── print-image.ps1
     ├── .env.example
-    ├── client.js                 # Main polling + print client
-    └── install-service.js        # Windows service installer
+    └── package.json
 ```
 
 ---
