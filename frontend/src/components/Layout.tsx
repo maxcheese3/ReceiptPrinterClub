@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import NavMenu from './NavMenu';
 import ThemePickerModal from './ThemePickerModal';
+import Footer from './Footer';
 import type { Theme } from '../hooks/useTheme';
 
 interface LayoutProps {
@@ -61,6 +62,8 @@ export default function Layout({ children, theme, onThemeChange }: LayoutProps) 
       </header>
 
       <main>{children}</main>
+
+      <Footer />
 
       {themePickerOpen && (
         <ThemePickerModal

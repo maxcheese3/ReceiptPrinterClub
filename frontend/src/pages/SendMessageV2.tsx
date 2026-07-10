@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import PrinterMultiSelect from '../components/PrinterMultiSelect';
 import { loadSavedIds, saveIds } from '../components/PrinterChecklist';
 import { usePrinters } from '../hooks/usePrinters';
@@ -624,8 +624,6 @@ export default function SendMessageV2() {
           <svg viewBox="0 0 20 20" fill="none"><path d="M3 10l14-7-7 14V10H3z" fill="currentColor" /></svg>
           {submitting ? 'PRINTING…' : 'PRINT'}
         </button>
-
-        <Link to="/send" className="send-v2-legacy-link">Use legacy send page</Link>
 
       </form>
 

@@ -136,6 +136,7 @@ node install-service.js remove
 | `/myprinter/subscriptions` | RSS/Atom feed subscriptions |
 | `/admin/login` | Super admin login |
 | `/admin` | Super admin dashboard (all printers + messages) |
+| `/about` | Project credits and links |
 
 ---
 
