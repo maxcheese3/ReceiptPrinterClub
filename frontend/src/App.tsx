@@ -9,6 +9,7 @@ import SendMessageV2 from './pages/SendMessageV2';
 import RegisterPrinter from './pages/RegisterPrinter';
 import ApiDocs from './pages/ApiDocs';
 import SuperAdmin from './pages/SuperAdmin';
+import SuperAdminLogin from './pages/SuperAdminLogin';
 import PrinterLoginPage from './pages/PrinterLoginPage';
 import PrinterSettings from './pages/PrinterSettings';
 import PrinterMessageHistory from './pages/PrinterMessageHistory';
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="/send-message" element={<SendMessageV2 />} />
             <Route path="/register" element={<RegisterPrinter />} />
             <Route path="/docs" element={<ApiDocs />} />
+            <Route path="/admin/login" element={<SuperAdminLogin />} />
             <Route path="/admin" element={<SuperAdmin onOpenModal={setModalMessage} />} />
             {/* Legacy redirects */}
             <Route path="/subscriptions" element={<Navigate to="/myprinter/subscriptions" replace />} />
