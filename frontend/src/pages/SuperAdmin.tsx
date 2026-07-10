@@ -145,24 +145,25 @@ export default function SuperAdmin({ onOpenModal }: SuperAdminProps) {
             <h1>Super Admin</h1>
             <p>For advanced printer god powers.</p>
           </div>
-          <form onSubmit={handleLogin} style={{ maxWidth: 400 }}>
-            <div className="field">
-              <label htmlFor="admin-password"><span className="label-text">Password</span></label>
-              <input
-                type="password"
-                id="admin-password"
-                className="admin-api-input"
-                autoComplete="current-password"
-                placeholder="Admin password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            <button type="submit" className="btn btn-primary" disabled={loggingIn}>
-              {loggingIn ? 'Signing in…' : 'Sign In'}
-            </button>
-            {loginFeedback && <FeedbackBanner type={loginFeedback.type} message={loginFeedback.msg} />}
-          </form>
+          <div className="login-card">
+            <form onSubmit={handleLogin}>
+              <div className="field">
+                <label htmlFor="admin-password"><span className="label-text">Password</span></label>
+                <input
+                  type="password"
+                  id="admin-password"
+                  autoComplete="current-password"
+                  placeholder="Admin password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+              <button type="submit" className="btn btn-primary" disabled={loggingIn}>
+                {loggingIn ? 'Signing in…' : 'Sign In'}
+              </button>
+              {loginFeedback && <FeedbackBanner type={loginFeedback.type} message={loginFeedback.msg} />}
+            </form>
+          </div>
         </div>
       </section>
     );

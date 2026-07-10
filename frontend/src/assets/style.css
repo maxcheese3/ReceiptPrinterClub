@@ -1061,6 +1061,17 @@ footer a:hover { text-decoration: underline; }
   background-clip: text;
 }
 
+/* ── Login card ──────────────────────────────────────────────────────────────── */
+.login-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px 32px 32px;
+  max-width: 420px;
+}
+.login-card form { display: flex; flex-direction: column; gap: 20px; }
+.login-card .btn-primary { align-self: flex-start; }
+
 /* ── Admin UI ────────────────────────────────────────────────────────────────── */
 .admin-section {
   margin-top: 36px;

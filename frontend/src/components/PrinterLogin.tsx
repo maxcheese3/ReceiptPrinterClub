@@ -39,25 +39,25 @@ export default function PrinterLogin({ onLogin }: PrinterLoginProps) {
           <h1>My Printer</h1>
           <p>Enter your printer's API key to manage settings, messages, and subscriptions.</p>
         </div>
-        <form onSubmit={handleSubmit} style={{ maxWidth: 420 }}>
-          <div className="field">
-            <label htmlFor="pa-api-key"><span className="label-text">Printer API Key</span></label>
-            <textarea
-              id="pa-api-key"
-              className="admin-api-input"
-              placeholder="Your printer's API key"
-              autoComplete="off"
-              rows={3}
-              style={{ resize: 'none', minHeight: 'unset', fontSize: '16px' }}
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-            />
-          </div>
-          <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign In'}
-          </button>
-          {feedback && <FeedbackBanner type={feedback.type} message={feedback.msg} />}
-        </form>
+        <div className="login-card">
+          <form onSubmit={handleSubmit}>
+            <div className="field">
+              <label htmlFor="pa-api-key"><span className="label-text">Printer API Key</span></label>
+              <input
+                type="password"
+                id="pa-api-key"
+                placeholder="Your printer's API key"
+                autoComplete="current-password"
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.target.value)}
+              />
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? 'Signing in…' : 'Sign In'}
+            </button>
+            {feedback && <FeedbackBanner type={feedback.type} message={feedback.msg} />}
+          </form>
+        </div>
       </div>
     </section>
   );
