@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { Theme } from '../hooks/useTheme';
 import { getResolvedTheme } from '../hooks/useTheme';
 
-const CAROUSEL_THEMES: Theme[] = ['dark', 'light', 'rush', 'beans', 'shrek', 'transit', 'system'];
+const CAROUSEL_THEMES: Theme[] = ['dark', 'light', 'rush', 'beans', 'shrek', 'transit', 'system', 'hellokitty'];
 
 const THEME_LABELS: Record<Theme, string> = {
   dark: 'Dark Mode',
@@ -13,6 +13,9 @@ const THEME_LABELS: Record<Theme, string> = {
   shrek: 'Shrek',
   transit: 'TriMet',
   system: 'Match System',
+  hellokitty: 'Hello Kitty',
+  'hellokitty-light': 'Hello Kitty Light',
+  'hellokitty-dark': 'Hello Kitty Dark',
 };
 
 const THEME_EMOJIS: Record<Theme, string> = {
@@ -23,6 +26,9 @@ const THEME_EMOJIS: Record<Theme, string> = {
   shrek: '🧅',
   transit: '🚌',
   system: '🔄',
+  hellokitty: '🐱',
+  'hellokitty-light': '🐱',
+  'hellokitty-dark': '🐱',
 };
 
 interface ThemePickerModalProps {
@@ -76,6 +82,8 @@ export default function ThemePickerModal({ theme, onThemeChange, onClose }: Them
   const resolvedLabel =
     tempTheme === 'system'
       ? `Currently: ${getResolvedTheme('system') === 'dark' ? 'Dark Mode' : 'Shrek'}`
+      : tempTheme === 'hellokitty'
+      ? `Currently: ${getResolvedTheme('hellokitty') === 'hellokitty-dark' ? 'Hello Kitty Dark' : 'Hello Kitty Light'}`
       : null;
 
   return createPortal(

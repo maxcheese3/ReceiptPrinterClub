@@ -1424,6 +1424,91 @@ footer a:hover { text-decoration: underline; }
   color: #fff;
 }
 
+/* ── Hello Kitty Light ───────────────────────────────────────────────────────── */
+/* Soft white & pink — bows, polka dots, kawaii sweetness */
+[data-theme="hellokitty-light"] {
+  --bg:           #fff5f8;
+  --bg-card:      #ffffff;
+  --bg-input:     #fef0f5;
+  --border:       #f5c5d8;
+  --border-focus: #e8649a;
+  --fg:           #2d1520;
+  --fg-muted:     #c4748e;
+  --fg-dim:       #f0c0d0;
+  --accent:       #e8649a;
+  --accent-glow:  rgba(232, 100, 154, 0.20);
+  --accent-hover: #d4507f;
+  --success:      #5a9e6e;
+  --error:        #cc3366;
+  --warn:         #f59e3a;
+  --radius:       16px;
+  --radius-lg:    24px;
+  --font-body:    'Nunito', system-ui, sans-serif;
+  --font-display: 'Pacifico', cursive;
+  --shadow:       0 2px 16px rgba(232,100,154,0.12);
+  --shadow-lg:    0 8px 48px rgba(232,100,154,0.20);
+  --header-bg:    rgba(255, 245, 248, 0.94);
+  --grid-opacity: 0.10;
+  --nav-active-bg: rgba(232,100,154,0.10);
+}
+
+/* ── Hello Kitty Dark ────────────────────────────────────────────────────────── */
+/* Deep rose-black with pink accents — nighttime Hello Kitty */
+[data-theme="hellokitty-dark"] {
+  --bg:           #1a0d12;
+  --bg-card:      #261218;
+  --bg-input:     #301820;
+  --border:       #4a2030;
+  --border-focus: #e8649a;
+  --fg:           #fce8f0;
+  --fg-muted:     #c4748e;
+  --fg-dim:       #5a2a3a;
+  --accent:       #e8649a;
+  --accent-glow:  rgba(232, 100, 154, 0.25);
+  --accent-hover: #f07aad;
+  --success:      #5a9e6e;
+  --error:        #ff4466;
+  --warn:         #f59e3a;
+  --radius:       16px;
+  --radius-lg:    24px;
+  --font-body:    'Nunito', system-ui, sans-serif;
+  --font-display: 'Pacifico', cursive;
+  --shadow:       0 2px 16px rgba(0,0,0,0.5);
+  --shadow-lg:    0 8px 48px rgba(0,0,0,0.7);
+  --header-bg:    rgba(26, 13, 18, 0.96);
+  --grid-opacity: 0.30;
+  --nav-active-bg: rgba(232,100,154,0.15);
+}
+
+/* ── Hello Kitty shared component overrides ──────────────────────────────────── */
+[data-theme="hellokitty-light"] .panel-header h1,
+[data-theme="hellokitty-dark"] .panel-header h1 {
+  background: linear-gradient(135deg, #e8649a 0%, #f9a8c9 50%, #e8649a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-family: 'Pacifico', cursive;
+  font-size: 32px;
+  letter-spacing: 0.02em;
+}
+[data-theme="hellokitty-light"] .bg-grid,
+[data-theme="hellokitty-dark"] .bg-grid {
+  background-image: radial-gradient(circle, var(--border) 2px, transparent 2px);
+  background-size: 28px 28px;
+}
+[data-theme="hellokitty-light"] .btn-primary,
+[data-theme="hellokitty-dark"] .btn-primary {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #e8649a, #f07aad);
+}
+[data-theme="hellokitty-light"] form,
+[data-theme="hellokitty-dark"] form {
+  border-radius: 20px;
+}
+
 
 /* ── Paper width radio options ───────────────────────────────────────────────── */
 .paper-width-options {
