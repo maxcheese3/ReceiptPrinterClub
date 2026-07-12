@@ -7,6 +7,15 @@ Versions correspond to feature branches merged into the refactor lineage.
 
 ---
 
+## [3.1.0] - 2026-07-12 — `refactor/ux-ui-v2`
+
+### Added
+
+- **Printer Directory** — new `/directory` page listing all registered printers as cards showing name, online/offline status, description, location, and column/font-size spec. Clicking a card opens the Send Message page with that printer pre-selected. A "Select Multiple" mode lets users tick several printers at once and navigate directly to Send Message with all of them pre-selected via the `?to=` URL parameter.
+- **Directory nav item** — "Directory" added to the hamburger navigation menu between "Send Message" and "About".
+
+---
+
 ## [3.0.1] - 2026-07-12 — `refactor/ux-ui-v2`
 
 ### Fixed

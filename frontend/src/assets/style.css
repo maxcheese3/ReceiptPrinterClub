@@ -2399,3 +2399,145 @@ textarea.word-wrap-on {
   min-width: 120px;
   justify-content: center;
 }
+
+/* ── Directory Page ──────────────────────────────────────────────────────────── */
+.directory-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+.directory-count {
+  font-size: 14px;
+  color: var(--fg-muted);
+}
+.directory-empty {
+  color: var(--fg-muted);
+  font-size: 14px;
+  text-align: center;
+  padding: 32px 0;
+}
+.directory-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.directory-card {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  outline: none;
+  user-select: none;
+}
+.directory-card:hover {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.directory-card:focus-visible {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.directory-card.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-input));
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.directory-card-checkbox {
+  flex-shrink: 0;
+  align-self: center;
+}
+.directory-card-content {
+  flex: 1;
+  min-width: 0;
+}
+.directory-checkbox {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-focus);
+  border-radius: 4px;
+  background: var(--bg-input);
+  transition: background 0.12s, border-color 0.12s;
+}
+.directory-checkbox.checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.directory-checkbox.checked::after {
+  content: '✓';
+  display: block;
+  color: #fff;
+  font-size: 12px;
+  line-height: 14px;
+  text-align: center;
+}
+.directory-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.directory-card-name {
+  font-family: var(--font-display);
+  font-size: 28px;
+  color: var(--fg);
+  word-break: break-word;
+}
+.directory-status-badge {
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.directory-status-badge.online {
+  color: var(--success);
+}
+.directory-status-badge.offline {
+  color: var(--fg-muted);
+}
+.directory-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.directory-meta-item {
+  font-size: 14px;
+  color: var(--fg-muted);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.directory-meta-location {
+  color: var(--fg-muted);
+}
+.directory-meta-cols {
+  color: var(--fg-dim);
+  margin-top: 4px;
+}
+.directory-action-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+.directory-action-label {
+  font-size: 14px;
+  color: var(--fg-muted);
+}

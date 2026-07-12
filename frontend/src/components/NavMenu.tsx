@@ -1,13 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { usePrinterAuth } from '../contexts/PrinterAuthContext';
 
-const PUBLIC_ITEMS = [
-  { to: '/send-message', label: 'Send Message' },
-  { to: '/about', label: 'About' },
-  { to: '/admin', label: 'Admin' },
-  { to: '/docs',  label: 'API Docs' },
-];
-
 const PRINTER_ITEMS = [
   { to: '/myprinter/message-history', label: 'Message History' },
   { to: '/myprinter/subscriptions',   label: 'Subscriptions' },
@@ -23,18 +16,34 @@ export default function NavMenu({ onNavigate, onOpenThemePicker }: NavMenuProps)
 
   return (
     <nav id="nav-menu">
-      {PUBLIC_ITEMS.map(({ to, label }) => (
-        <NavLink
-          key={to}
-          to={to}
-          className={({ isActive }) => `nav-tab${isActive ? ' active' : ''}`}
-          onClick={onNavigate}
-        >
-          {label}
-        </NavLink>
-      ))}
-      <div className="nav-menu-divider" />
-
+      <NavLink
+        to="/about"
+        className={({ isActive }) => `nav-tab${isActive ? ' active' : ''}`}
+        onClick={onNavigate}
+      >
+        About
+      </NavLink>
+      <NavLink
+        to="/directory"
+        className={({ isActive }) => `nav-tab${isActive ? ' active' : ''}`}
+        onClick={onNavigate}
+      >
+        Directory
+      </NavLink>
+      <NavLink
+        to="/send-message"
+        className={({ isActive }) => `nav-tab${isActive ? ' active' : ''}`}
+        onClick={onNavigate}
+      >
+        Send Message
+      </NavLink>
+      <NavLink
+        to="/admin"
+        className={({ isActive }) => `nav-tab${isActive ? ' active' : ''}`}
+        onClick={onNavigate}
+      >
+        Super Admin
+      </NavLink>
       <button
         className="nav-tab nav-tab-theme"
         onClick={() => {
@@ -65,7 +74,7 @@ export default function NavMenu({ onNavigate, onOpenThemePicker }: NavMenuProps)
           >
             My Printer
           </NavLink>
-</>
+        </>
       ) : (
         <>
           <NavLink
