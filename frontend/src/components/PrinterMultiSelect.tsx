@@ -47,9 +47,9 @@ export default function PrinterMultiSelect({
     onChange(selectedIds.filter((x) => x !== id));
   }
 
-  const filtered = printers.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = printers
+    .filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="printer-multiselect" ref={wrapperRef}>
