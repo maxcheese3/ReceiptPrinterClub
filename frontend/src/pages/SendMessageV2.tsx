@@ -243,7 +243,7 @@ export default function SendMessageV2() {
     }, 'image/jpeg', 0.92);
   }
 
-  function handlePaste(e: React.ClipboardEvent | ClipboardEvent) {
+  const handlePaste = useCallback((e: React.ClipboardEvent | ClipboardEvent) => {
     const items = (e as ClipboardEvent).clipboardData?.items;
     if (!items) return;
     for (const item of Array.from(items)) {
@@ -254,12 +254,12 @@ export default function SendMessageV2() {
         break;
       }
     }
-  }
+  }, []);
 
   useEffect(() => {
     document.addEventListener('paste', handlePaste as EventListener);
     return () => document.removeEventListener('paste', handlePaste as EventListener);
-  });
+  }, [handlePaste]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

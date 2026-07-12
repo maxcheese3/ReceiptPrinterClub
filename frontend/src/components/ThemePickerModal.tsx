@@ -14,8 +14,6 @@ const THEME_LABELS: Record<Theme, string> = {
   transit: 'TriMet',
   system: 'Match System',
   hellokitty: 'Hello Kitty',
-  'hellokitty-light': 'Hello Kitty Light',
-  'hellokitty-dark': 'Hello Kitty Dark',
 };
 
 const THEME_EMOJIS: Record<Theme, string> = {
@@ -27,8 +25,6 @@ const THEME_EMOJIS: Record<Theme, string> = {
   transit: '🚌',
   system: '🔄',
   hellokitty: '🐱',
-  'hellokitty-light': '🐱',
-  'hellokitty-dark': '🐱',
 };
 
 interface ThemePickerModalProps {

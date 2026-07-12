@@ -7,6 +7,14 @@ Versions correspond to feature branches merged into the refactor lineage.
 
 ---
 
+## [3.0.1] - 2026-07-12 — `refactor/ux-ui-v2`
+
+### Fixed
+
+- **Theme picker** — separated user-selectable themes (`Theme`) from CSS-applied themes (`CSSTheme`). `hellokitty-light` and `hellokitty-dark` are no longer stored in `localStorage` or included in the `Theme` type; only the encompassing `hellokitty` meta-theme is stored. Adds a one-time migration that upgrades any stale `hellokitty-light`/`hellokitty-dark` localStorage values to `hellokitty`. Fixes carousel `indexOf` returning `-1` for persisted variants, which broke prev/next navigation and the dot indicator.
+
+---
+
 ## [3.0.0] - 2026-07-10 — `refactor/ux-ui-v2`
 
 Overhaul of the UX and UI frontend experience.

@@ -27,7 +27,7 @@ export function useAdminAuth() {
           ...(opts.headers ?? {}),
         },
       });
-      if (res.status === 401) {
+      if (res.status === 401 || res.status === 403) {
         logout();
         throw new Error('Session expired — please log in again.');
       }
