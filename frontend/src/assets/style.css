@@ -1903,8 +1903,12 @@ footer a:hover { text-decoration: underline; }
 .send-v2-advanced-body--inline {
   flex-direction: row;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 10px;
+}
+.send-v2-advanced-body--inline .image-adjust-label {
+  width: auto;
+  text-align: left;
 }
 .send-v2-advanced-divider {
   width: 1px;
