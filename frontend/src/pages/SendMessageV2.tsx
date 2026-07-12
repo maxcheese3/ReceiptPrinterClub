@@ -70,8 +70,8 @@ export default function SendMessageV2() {
   const [body, setBody] = useState('');
   const [fontSize, setFontSize] = useState(() => {
     const saved = localStorage.getItem(FONT_SIZE_KEY);
-    const n = saved ? Number(saved) : 9;
-    return isNaN(n) ? 9 : n;
+    const n = saved ? Number(saved) : 12;
+    return isNaN(n) ? 12 : n;
   });
   const [cursorLineLen, setCursorLineLen] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
