@@ -14,4 +14,4 @@ archive/
 client_office/
 printbridge.zip
 frontend/.vite/
-server/public/assets/
+server/public/

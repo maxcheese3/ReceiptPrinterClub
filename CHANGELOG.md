@@ -7,12 +7,26 @@ Versions correspond to feature branches merged into the refactor lineage.
 
 ---
 
+## [3.1.1] - 2026-07-13 — `refactor/ux-ui-v2`
+
+### Fixed
+
+- **Printer selector** — options in `PrinterMultiSelect` are now alphabetized.
+- **Default font size** — send form now defaults to 12pt instead of 9pt.
+- **Advanced options toolbar** — compacted layout; fixes wrapping on mobile.
+- **TO selector** — increased font size to match page body text.
+
+### Changed
+
+- **Build output** — removed legacy v1 static files (`index.html`, `style.css`, `app.js`) from the repo; `server/public/` is now gitignored as it is populated by `npm run build` in `frontend/`.
+
+---
+
 ## [3.1.0] - 2026-07-12 — `refactor/ux-ui-v2`
 
 ### Added
 
 - **Printer Directory** — new `/directory` page listing all registered printers as cards showing name, online/offline status, description, location, and column/font-size spec. Clicking a card opens the Send Message page with that printer pre-selected. A "Select Multiple" mode lets users tick several printers at once and navigate directly to Send Message with all of them pre-selected via the `?to=` URL parameter.
-- **Directory nav item** — "Directory" added to the hamburger navigation menu between "Send Message" and "About".
 
 ---
 
