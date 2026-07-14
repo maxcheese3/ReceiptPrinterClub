@@ -220,19 +220,57 @@ router.post(
         return res.status(404).json({ error: "Printer not found or inactive" });
       }
 
+      // An X-API-Key here identifies WHO IS SENDING (not the recipient). We keep
+      // the sender's printer id so they can later see their own "sent" history.
+      // This is the only trustworthy sender identity we have — sender_name is
+      // free text that anyone can type.
+      //
+      // Note the two different callers that send a key:
+      //   - a script/integration POSTing on a printer's behalf  -> source "api"
+      //   - the website, when the user is logged in to My Printer -> still "web"
+      // We distinguish them with an explicit `via=web` field so that logging in
+      // doesn't silently relabel a person's web messages as API traffic (which
+      // would skew the existing from_web/from_api stats).
       const authHeader = req.headers["x-api-key"];
+
+      // "Send anonymous": a logged-in user opting out of attribution for this one
+      // message. We still authenticate them (so rate limits and source
+      // classification stay correct), we just don't record WHO sent it.
+      //
+      // Because threading keys entirely on sender_printer_id, leaving it NULL is
+      // all it takes for the message to thread by sender_name instead — exactly
+      // like a guest send. No special-casing needed downstream.
+      //
+      // Enforced here rather than by simply having the client omit the API key:
+      // the key also drives rate limiting, and dropping it would let someone
+      // sidestep those limits by ticking a checkbox.
+      const anonymous = req.body.anonymous === "1" || req.body.anonymous === 1 || req.body.anonymous === true;
+
       let source = "web";
+      let sender_printer_id = null;
       if (authHeader) {
         const keyPrinter = db.getPrinterByApiKey(authHeader);
-        if (keyPrinter) source = "api";
+        if (keyPrinter) {
+          if (!anonymous) sender_printer_id = keyPrinter.id;
+          if (req.body.via !== "web") source = "api";
+        }
       }
 
-      // For web submissions with no sender name, fall back to client IP
+      // For web submissions with no sender name, fall back to client IP.
+      //
+      // But NOT for an explicitly anonymous send: stamping the sender's IP as
+      // their display name would leak more than attribution ever did — it'd end
+      // up printed on the recipient's receipt and shown in their thread list.
+      // An anonymous send with no name given is simply "Anonymous".
       if (source === "web" && !sender_name) {
-        const forwarded = req.headers["x-forwarded-for"];
-        sender_name = forwarded
-          ? forwarded.split(",")[0].trim()
-          : (req.ip || req.socket.remoteAddress || "Unknown");
+        if (anonymous) {
+          sender_name = "Anonymous";
+        } else {
+          const forwarded = req.headers["x-forwarded-for"];
+          sender_name = forwarded
+            ? forwarded.split(",")[0].trim()
+            : (req.ip || req.socket.remoteAddress || "Unknown");
+        }
       }
 
       // Build headers for the image fetch
@@ -292,18 +330,39 @@ router.post(
         sender_email: sender_email || null,
         body:         body         || null,
         image_path,
+        sender_printer_id,
       });
 
       console.log(`[messages] Created ${message.id} image_path=${message.image_path || "none"}`);
 
+      // image_path + created_at are returned so a guest (who has no server-side
+      // history) can store a reference to their sent message in localStorage and
+      // render a thumbnail from /uploads/<image_path> later.
       return res.status(201).json({
         success:    true,
         message_id: message.id,
         status:     message.status,
+        image_path: message.image_path,
+        created_at: message.created_at,
       });
     } catch (err) {
-      console.error("POST /api/messages error:", err);
-      return res.status(500).json({ error: "Internal server error" });
+      // Log the full stack — a bare "Internal server error" gives no way to
+      // diagnose a failing send. Common causes: a native dep (sharp,
+      // better-sqlite3) not installed after a pull, or a DB constraint.
+      console.error("POST /api/messages error:", err && err.stack ? err.stack : err);
+      if (err && err.code === "MODULE_NOT_FOUND") {
+        console.error(
+          "\n*** A required module is missing. Run `npm install` in the server/ " +
+          "directory — a dependency was added and hasn't been installed here. ***\n"
+        );
+      }
+      return res.status(500).json({
+        error: "Internal server error",
+        // Surfaced so the cause is visible in the browser too, not just the
+        // server console. Safe: this endpoint is not authenticated-admin-only,
+        // but the message is an exception string, not user data.
+        detail: err && err.message ? err.message : String(err),
+      });
     }
   }
 );

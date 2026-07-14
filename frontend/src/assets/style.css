@@ -2545,3 +2545,301 @@ textarea.word-wrap-on {
   font-size: 14px;
   color: var(--fg-muted);
 }
+
+/* ── Sent history (send page) ────────────────────────────────────────────────
+   Collapsible panel under the send form listing what you've sent. Server-backed
+   when logged in to a printer, localStorage-backed for guests. */
+.sent-history { margin-top: 16px; padding: 0; overflow: hidden; }
+
+.sent-history-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+}
+.sent-history-toggle:hover { background: var(--bg-input); }
+.sent-history-title { font-size: 14px; font-weight: 600; }
+.sent-history-count {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  border-radius: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+.sent-history-chevron {
+  color: var(--fg-muted);
+  font-size: 12px;
+  transition: transform 0.15s;
+}
+.sent-history-chevron.open { transform: rotate(180deg); }
+
+.sent-history-body {
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--border);
+}
+.sent-history-note {
+  font-size: 12px;
+  color: var(--fg-muted);
+  margin: 12px 0;
+  line-height: 1.5;
+}
+.sent-history-note a { color: var(--accent); }
+
+.sent-history-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 12px;
+}
+.sent-history-clear { color: var(--error); border-color: var(--error); }
+
+/* Per-card remove button (guest history only). Sits in the card's grid flow
+   next to the timestamp rather than spanning a row. */
+.sent-history-remove {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11px;
+  color: var(--fg-dim);
+  cursor: pointer;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+.sent-history-remove:hover { color: var(--error); }
+
+/* Failure reason on a sent card — full-width row like .pa-msg-body. */
+.pa-msg-error {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--error);
+  word-break: break-word;
+}
+
+/* Summary strip above the Sent tab in My Printer > Messages. */
+.pa-sent-summary {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.pa-sent-summary strong { color: var(--fg); font-size: 13px; }
+.pa-sent-summary .status-failed {
+  background: none;
+  padding: 0;
+  color: var(--error);
+}
+
+/* ── Screen-reader-only text ─────────────────────────────────────────────────
+   Visible to assistive tech, invisible on screen. Used so chat bubbles announce
+   "You sent" / "Received" — meaning that's otherwise carried only by alignment. */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Chat log (thread detail) ────────────────────────────────────────────────
+   Messaging-app layout: sent align right, received align left. */
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 2px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.chat-row { display: flex; }
+.chat-row.in  { justify-content: flex-start; }
+.chat-row.out { justify-content: flex-end; }
+
+.chat-bubble {
+  max-width: 78%;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+/* Received: neutral surface, tail on the left. */
+.chat-row.in .chat-bubble {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-bottom-left-radius: 4px;
+}
+
+/* Sent: accent-tinted, tail on the right. Tinted rather than solid-accent so
+   long messages stay readable and the theme's contrast is preserved. */
+.chat-row.out .chat-bubble {
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-card));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--fg);
+  border-bottom-right-radius: 4px;
+}
+
+.chat-sender {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 3px;
+}
+
+.chat-body { white-space: pre-wrap; }
+
+.chat-img {
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: 8px;
+  display: block;
+  margin-bottom: 6px;
+  cursor: zoom-in;
+}
+
+.chat-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.chat-time { font-size: 10px; color: var(--fg-dim); }
+.chat-status {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 600;
+}
+.chat-status.status-failed   { color: var(--error); }
+.chat-status.status-pending,
+.chat-status.status-printing { color: var(--fg-muted); }
+
+/* ── Thread list extras ──────────────────────────────────────────────────── */
+.thread-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--fg-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  vertical-align: middle;
+}
+
+/* Guest avatars read as secondary — they can't be replied to. */
+.pa-thread-avatar.guest {
+  background: var(--bg-input);
+  color: var(--fg-muted);
+  border: 1px dashed var(--border);
+}
+
+/* "You: " prefix on a thread preview whose last message you sent. */
+.preview-you { color: var(--fg-muted); font-weight: 600; }
+
+/* ── Sent/Received pill (recent activity) ────────────────────────────────── */
+.dir-badge {
+  display: inline-block;
+  margin-right: 7px;
+  padding: 1px 7px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  vertical-align: middle;
+}
+.dir-badge.out {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.dir-badge.in {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
+}
+
+/* ── Send Anonymous toggle (From field) ──────────────────────────────────────
+   The input + toggle share one shaded shell, so the toggle sits INSIDE the
+   shaded area exactly like the "Aa" button lives inside the tab pill. */
+.from-shell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px;
+}
+/* The input becomes borderless/transparent — the shell provides the framing,
+   just as the tab buttons are transparent inside .send-v2-tabs. */
+.from-shell input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  padding: 5px 8px;
+}
+.from-shell input[type="text"]:focus { outline: none; }
+/* Give the whole shell the focus ring instead, so it reads as one control. */
+.from-shell:focus-within { border-color: var(--accent); }
+
+.from-anon-btn {
+  flex: 0 0 auto;
+  margin-left: auto;         /* push to the right edge, like the Aa button */
+  text-transform: none;      /* full word, not an abbreviation */
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.from-anon-note {
+  /* .send-v2-advanced-body provides the box, padding, and fade-in, but it's a
+     flex column — which would stack the text and the inline <strong> name onto
+     separate lines. Force normal inline text flow so the sentence reads
+     continuously with the name inline. */
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+.from-anon-note strong { color: var(--fg); }
+
+/* Anonymous marker on a sent message in recent activity. */
+.dir-badge.anon {
+  margin-left: 4px;
+  background: var(--bg-input);
+  color: var(--fg-muted);
+  border: 1px dashed var(--border);
+}

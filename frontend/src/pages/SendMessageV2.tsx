@@ -8,9 +8,14 @@ import { useImageResize } from '../hooks/useImageResize';
 import type { DitherMethod } from '../hooks/useDithering';
 import PrintConfirmModal from '../components/PrintConfirmModal';
 import type { PrintResult } from '../components/PrintConfirmModal';
+import { usePrinterAuth } from '../contexts/PrinterAuthContext';
+import RecentActivity from '../components/RecentActivity';
+import { addGuestMessage } from '../lib/guestHistory';
+import type { GuestSentMessage } from '../types/api';
 
 const GRAYSCALE_KEY = 'printbridge_grayscale_v2';
 const SENDER_NAME_KEY = 'printbridge_sender_name';
+const ANONYMOUS_KEY   = 'printbridge_send_anonymous';
 const FONT_SIZE_KEY = 'printbridge_font_size';
 const ACTIVE_TAB_KEY = 'printbridge_active_tab';
 const WORD_WRAP_KEY = 'printbridge_word_wrap';
@@ -30,6 +35,14 @@ export default function SendMessageV2() {
   const { resize } = useImageResize();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // When logged in to a printer we send the API key with each message, so the
+  // server can attribute it and keep the sent history for us. When logged out
+  // we record the send in localStorage instead (see lib/guestHistory).
+  const { apiKey } = usePrinterAuth();
+
+  // Bumped after each successful send so the history list below re-reads.
+  const [historyVersion, setHistoryVersion] = useState(0);
+
   // TO: printer selection — URL param takes priority over localStorage
   const [selectedIds, setSelectedIds] = useState<string[]>(() => {
     const fromUrl = searchParams.get('to');
@@ -46,6 +59,14 @@ export default function SendMessageV2() {
   // FROM
   const [senderName, setSenderName] = useState(
     () => localStorage.getItem(SENDER_NAME_KEY) ?? ''
+  );
+
+  // "Send anonymous" — logged-in users opting out of attribution for a message.
+  // Persisted so it survives a reload mid-compose, but it defaults to OFF, and
+  // it's force-cleared on logout below: the risk of silently sending attributed
+  // when you meant anonymous (or vice versa) is worse than re-ticking a box.
+  const [anonymous, setAnonymous] = useState(
+    () => localStorage.getItem(ANONYMOUS_KEY) === '1'
   );
 
   // Tabs
@@ -139,6 +160,16 @@ export default function SendMessageV2() {
 
   // Re-run auto-resize whenever body changes (handles programmatic clears after send)
   useEffect(() => { autoResize(); }, [body]);
+
+  // The toggle is hidden when logged out, so a stale "on" value would be an
+  // invisible setting that silently changes behaviour the moment you log back
+  // in. Clear it whenever there's no session.
+  useEffect(() => {
+    if (!apiKey && anonymous) {
+      setAnonymous(false);
+      localStorage.setItem(ANONYMOUS_KEY, '0');
+    }
+  }, [apiKey, anonymous]);
 
   function updateCursorStats() {
     const ta = textareaRef.current;
@@ -288,16 +319,68 @@ export default function SendMessageV2() {
               : await resize(currentFile);
             fd.append('image', imageToSend, imageToSend.name);
           }
-          const res = await fetch('/api/messages', { method: 'POST', body: fd });
+
+          // Identify ourselves if logged in, so the server can record this in our
+          // sent history. `via=web` keeps the message classified as a web send
+          // rather than API traffic — logging in shouldn't reclassify it.
+          //
+          // We still send the key on an anonymous send (it drives rate limiting);
+          // the `anonymous` flag tells the server to authenticate us but NOT
+          // record who we are. Dropping the key instead would let anyone bypass
+          // rate limits by ticking the box.
+          const headers: HeadersInit = {};
+          if (apiKey) {
+            headers['X-API-Key'] = apiKey;
+            fd.append('via', 'web');
+            if (anonymous) fd.append('anonymous', '1');
+          }
+
+          const res = await fetch('/api/messages', { method: 'POST', body: fd, headers });
           if (!res.ok) {
             let msg = `Server error (${res.status})`;
             try { const d = await res.json() as { error?: string }; if (d.error) msg = d.error; } catch { /**/ }
             return { success: false, error: msg, printer_id };
           }
-          const data = await res.json() as { success: boolean };
+          const data = await res.json() as {
+            success: boolean; message_id: string; image_path?: string; created_at?: string;
+          };
           return { ...data, printer_id };
         })
       );
+
+      // Guests have no server-side history, so persist the send locally. We do
+      // this per-recipient (a send to 3 printers is 3 history entries, matching
+      // how the server stores them) and record failures too — "did that send?"
+      // is exactly when someone checks their history.
+      // Where a send gets remembered depends on whether it's attributed:
+      //
+      //   attributed (logged in, not anonymous) -> the server recorded it against
+      //     our printer; it'll come back from /recent. Nothing to do here.
+      //
+      //   unattributed (guest, OR logged in + anonymous) -> the server deliberately
+      //     has no record of who sent it, so it can never appear in our server-side
+      //     history. localStorage is the only place it can live. Without this, an
+      //     anonymous send would vanish from the sender's view entirely.
+      if (!apiKey || anonymous) {
+        for (const r of results as Array<{
+          success: boolean; error?: string; printer_id: string;
+          message_id?: string; image_path?: string; created_at?: string;
+        }>) {
+          const entry: GuestSentMessage = {
+            id:           r.message_id ?? `local-${Date.now()}-${r.printer_id}`,
+            printer_id:   r.printer_id,
+            printer_name: printerMap[r.printer_id]?.name ?? r.printer_id,
+            sender_name:  senderName.trim() || undefined,
+            body:         body || undefined,
+            image_path:   r.image_path,
+            created_at:   r.created_at ? r.created_at + 'Z' : new Date().toISOString(),
+            status:       r.success ? 'sent' : 'failed',
+            error:        r.success ? undefined : r.error,
+          };
+          addGuestMessage(entry);
+        }
+      }
+      setHistoryVersion((v) => v + 1);
       const allOk = results.every((d) => d.success);
       const printerNames = selectedIds.map((id) => printerMap[id]?.name ?? id);
       if (allOk) {
@@ -354,18 +437,48 @@ export default function SendMessageV2() {
           <label htmlFor="v2-sender-name">
             <span className="label-text">From</span>
           </label>
-          <input
-            type="text"
-            id="v2-sender-name"
-            value={senderName}
-            onChange={(e) => {
-              setSenderName(e.target.value);
-              localStorage.setItem(SENDER_NAME_KEY, e.target.value);
-            }}
-            placeholder="Your name (optional)"
-            maxLength={100}
-          />
+          {/* Input + toggle share one shaded shell so the toggle sits INSIDE the
+              shaded area, exactly like the "Aa" button lives inside the tab pill. */}
+          <div className={`from-shell${apiKey ? ' has-toggle' : ''}`}>
+            <input
+              type="text"
+              id="v2-sender-name"
+              value={senderName}
+              onChange={(e) => {
+                setSenderName(e.target.value);
+                localStorage.setItem(SENDER_NAME_KEY, e.target.value);
+              }}
+              placeholder={anonymous ? 'Anonymous' : 'Your name (optional)'}
+              maxLength={100}
+            />
+
+            {/* Only meaningful when logged in — a guest is already unattributed,
+                so the toggle would be a no-op and just add confusion. */}
+            {apiKey && (
+              <button
+                type="button"
+                className={`send-v2-tabs-advanced from-anon-btn${anonymous ? ' open' : ''}`}
+                onClick={() => {
+                  const next = !anonymous;
+                  setAnonymous(next);
+                  localStorage.setItem(ANONYMOUS_KEY, next ? '1' : '0');
+                }}
+                title="Send without linking this message to your printer"
+                aria-pressed={anonymous}
+              >
+                Anonymous
+              </button>
+            )}
+          </div>
         </div>
+
+        {apiKey && anonymous && (
+          <div className="send-v2-advanced-body from-anon-note">
+            This message won't be linked to your printer. It'll appear to the
+            recipient as coming from <strong>{senderName.trim() || 'Anonymous'}</strong>,
+            and their replies won't thread back to you.
+          </div>
+        )}
 
         {/* Message tabs */}
         <div className="field">
@@ -626,6 +739,10 @@ export default function SendMessageV2() {
         </button>
 
       </form>
+
+      {/* History of what this person has sent. Reads from the server when logged
+          in to a printer, from localStorage when not. */}
+      <RecentActivity refreshKey={historyVersion} />
 
     </section>
 
