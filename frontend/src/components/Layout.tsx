@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import NavMenu from './NavMenu';
 import ThemePickerModal from './ThemePickerModal';
 import Footer from './Footer';
 import type { Theme } from '../hooks/useTheme';
+import { usePrinters } from '../hooks/usePrinters';
+import { printerStatusText } from './PrinterChecklist';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -15,6 +17,8 @@ export default function Layout({ children, theme, onThemeChange }: LayoutProps) 
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const { printers } = usePrinters();
+  const onlineCount = printers.filter((p) => printerStatusText(p).online).length;
 
   return (
     <>
@@ -32,6 +36,15 @@ export default function Layout({ children, theme, onThemeChange }: LayoutProps) 
             </svg>
             <span>ReceiptPrinterClub</span>
           </div>
+
+          <Link
+            to="/directory"
+            className="online-count-badge"
+            aria-label={`${onlineCount} printer${onlineCount !== 1 ? 's' : ''} online — view directory`}
+          >
+            {onlineCount > 0 && <span className="online-dot" />}
+            <span>{onlineCount} online</span>
+          </Link>
 
           <button
             className={`hamburger-btn${menuOpen ? ' open' : ''}`}

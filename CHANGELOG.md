@@ -7,6 +7,18 @@ Versions correspond to feature branches merged into the refactor lineage.
 
 ---
 
+## [3.2.0] - 2026-07-13 — `feat/online-printers-badge`
+
+### Changed
+
+- **Printer Directory** — cards now display in 2 columns on mobile; name scales down to 20px on narrow screens.  added word-wrap for description and location
+
+### Added
+
+- **Online printer badge** — compact "X online" pill in the header bar, to the left of the hamburger button. Shows a pulsing green dot when at least one printer is active; links to the Directory page. Refreshes every 10 seconds.
+
+---
+
 ## [3.1.1] - 2026-07-13 — `refactor/ux-ui-v2`
 
 ### Fixed
