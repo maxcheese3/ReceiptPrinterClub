@@ -1,0 +1,34 @@
+# Copy to docker-compose.yml, uncomment the section for your setup, and run:
+#   docker compose up -d --build
+#
+# Prerequisites either way: cp .env.example .env  and fill it in.
+
+services:
+  printbridge-client:
+    build: .
+    # Or use a pre-built image once you've pushed one:
+    # image: yourorg/printbridge-client:latest
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # Persists print history across container restarts/rebuilds.
+      - printbridge-archive:/app/archive
+
+    # ── Scenario A: printer connected by USB to THIS machine ──────────────────
+    # Requires PRINTER_DEVICE=/dev/usb/lp0 (or similar) in your .env.
+    # Find the host group that owns the device with: getent group lp
+    # (commonly GID 20 on Debian/Ubuntu — check yours, it does vary)
+    devices:
+      - "/dev/usb/lp0:/dev/usb/lp0"
+    group_add:
+      - "20"   # replace with your host's `lp` (or matching) group GID
+
+    # ── Scenario B: printer reachable through a CUPS server on the network ───
+    # No `devices:`/`group_add:` needed — comment out the block above and set
+    # in your .env instead:
+    #   PRINTER_NAME=your-cups-printer-name
+    #   CUPS_SERVER=cups-host.local        # or an IP address
+    # (CUPS_SERVER is read automatically by the `lp` CLI inside the container)
+
+volumes:
+  printbridge-archive:
