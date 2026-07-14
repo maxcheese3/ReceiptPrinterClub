@@ -1302,6 +1302,16 @@ footer a:hover { text-decoration: underline; }
   color: #fff;
 }
 [data-theme="transit"] .logo { color: #fff; }
+[data-theme="transit"] .online-count-badge {
+  color: rgba(255,255,255,0.8);
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.25);
+}
+[data-theme="transit"] .online-count-badge:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.2);
+  border-color: rgba(255,255,255,0.5);
+}
 [data-theme="transit"] .nav-tab { color: var(--fg-muted); }
 [data-theme="transit"] .nav-tab:hover { color: var(--fg); background: var(--bg-input); }
 [data-theme="transit"] .nav-tab.active { color: var(--accent); background: var(--nav-active-bg); border-bottom: none; border-radius: 3px; }
@@ -1747,9 +1757,44 @@ footer a:hover { text-decoration: underline; }
   margin-bottom: 10px;
 }
 
+/* ── Online printer count badge ──────────────────────────────────────────── */
+.online-count-badge {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  text-decoration: none;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.online-count-badge:hover {
+  background: var(--bg-card);
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.online-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.5); }
+  50%       { opacity: 0.85; box-shadow: 0 0 0 5px rgba(34,197,94,0); }
+}
+
 /* ── Hamburger button ────────────────────────────────────────────────────── */
 .hamburger-btn {
-  margin-left: auto;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -2422,12 +2467,32 @@ textarea.word-wrap-on {
   text-align: center;
   padding: 32px 0;
 }
+.directory-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.directory-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  margin: 0 0 10px;
+}
 .directory-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+@media (min-width: 600px) {
+  .directory-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+  }
 }
 .directory-card {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: flex-start;
@@ -2440,6 +2505,22 @@ textarea.word-wrap-on {
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
   outline: none;
   user-select: none;
+}
+.directory-card-dot {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.directory-card-dot.online {
+  background: var(--success);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+.directory-card-dot.offline {
+  background: var(--fg-dim);
 }
 .directory-card:hover {
   border-color: var(--border-focus);
@@ -2484,10 +2565,6 @@ textarea.word-wrap-on {
   text-align: center;
 }
 .directory-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
   margin-bottom: 8px;
 }
 .directory-card-name {
@@ -2495,17 +2572,6 @@ textarea.word-wrap-on {
   font-size: 28px;
   color: var(--fg);
   word-break: break-word;
-}
-.directory-status-badge {
-  font-size: 12px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.directory-status-badge.online {
-  color: var(--success);
-}
-.directory-status-badge.offline {
-  color: var(--fg-muted);
 }
 .directory-card-meta {
   display: flex;
@@ -2516,16 +2582,20 @@ textarea.word-wrap-on {
   font-size: 14px;
   color: var(--fg-muted);
   line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .directory-meta-location {
   color: var(--fg-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
-.directory-meta-cols {
-  color: var(--fg-dim);
-  margin-top: 4px;
+@media (max-width: 599px) {
+  .directory-card {
+    padding: 10px 12px;
+  }
+  .directory-card-name {
+    font-size: 20px;
+  }
 }
 .directory-action-bar {
   position: sticky;
