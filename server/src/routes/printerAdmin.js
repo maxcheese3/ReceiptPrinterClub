@@ -62,13 +62,16 @@ router.patch("/me", requireApiKey, (req, res) => {
 });
 
 // ── DELETE /api/printer-admin/me ──────────────────────────────────────────────
-// Requires the printer name to be sent as confirmation.
+// Requires the printer name as confirmation. This RETIRES the printer (soft
+// delete): the row and all its messages are kept so history and threading stay
+// intact for everyone who ever talked to it, but the API key stops working and
+// the printer disappears from the directory and from being a send target.
 router.delete("/me", requireApiKey, (req, res) => {
   const { confirm_name } = req.body;
   if (!confirm_name || confirm_name.trim() !== req.printer.name) {
     return res.status(400).json({ error: "Printer name confirmation does not match" });
   }
-  db.hardDeletePrinter(req.printer.id);
+  db.softDeletePrinter(req.printer.id);
   return res.json({ success: true });
 });
 

@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePrinters } from '../hooks/usePrinters';
 import { printerStatusText } from '../components/PrinterChecklist';
-import type { Printer } from '../types/api';
+import type { Printer, PublicStats } from '../types/api';
 
 export default function Directory() {
   const { printers: rawPrinters } = usePrinters();
@@ -12,6 +12,16 @@ export default function Directory() {
   const navigate = useNavigate();
   const [multiSelect, setMultiSelect] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [stats, setStats] = useState<PublicStats | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/printers/stats')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d) setStats(d as PublicStats); })
+      .catch(() => { /* stats are non-essential — silently skip if unavailable */ });
+    return () => { cancelled = true; };
+  }, []);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) =>
@@ -107,6 +117,22 @@ export default function Directory() {
           {sorted.length === 0
             ? 'No printers registered'
             : `${sorted.length} printer${sorted.length === 1 ? '' : 's'}`}
+          {stats && (
+            <span className="directory-stats">
+              <span className="directory-stat-sep" aria-hidden="true">·</span>
+              <span className="directory-stat">
+                <strong>{stats.delivered.toLocaleString()}</strong> delivered
+              </span>
+              <span className="directory-stat-sep" aria-hidden="true">·</span>
+              <span className="directory-stat">
+                <strong>{stats.this_week.toLocaleString()}</strong> this week
+              </span>
+              <span className="directory-stat-sep" aria-hidden="true">·</span>
+              <span className="directory-stat">
+                <strong>{stats.today.toLocaleString()}</strong> today
+              </span>
+            </span>
+          )}
         </span>
         {!multiSelect ? (
           <button

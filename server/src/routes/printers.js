@@ -9,6 +9,16 @@ router.get("/", (_req, res) => {
   return res.json({ printers: db.listPrinters(true) });
 });
 
+// GET /api/printers/stats — lightweight public activity counters for the directory
+router.get("/stats", (_req, res) => {
+  const s = db.getPublicStats();
+  return res.json({
+    delivered: s.delivered || 0,
+    this_week: s.this_week || 0,
+    today:     s.today     || 0,
+  });
+});
+
 // POST /api/printers — register a new printer
 router.post("/", (req, res) => {
   const { name, description, location, columns, font_size } = req.body;

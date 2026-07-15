@@ -2913,3 +2913,90 @@ textarea.word-wrap-on {
   color: var(--fg-muted);
   border: 1px dashed var(--border);
 }
+
+/* ── Directory activity stats (inline with printer count) ────────────────────── */
+.directory-stats {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: 8px;
+}
+.directory-stat { white-space: nowrap; }
+.directory-stat strong { color: var(--fg); font-weight: 600; }
+.directory-stat-sep { color: var(--border); }
+/* On narrow screens let the stats wrap under the count cleanly. */
+@media (max-width: 560px) {
+  .directory-toolbar { flex-wrap: wrap; }
+  .directory-stats { margin-left: 0; width: 100%; }
+  .directory-stats > .directory-stat-sep:first-child { display: none; }
+}
+
+/* ── Printer Management ──────────────────────────────────────────────────────── */
+.mgmt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mgmt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.mgmt-row:last-of-type { border-bottom: none; }
+.mgmt-row-text { min-width: 0; }
+.mgmt-row-title { font-size: 14px; font-weight: 600; color: var(--fg); margin-bottom: 2px; }
+.mgmt-row-desc { font-size: 12.5px; color: var(--fg-muted); line-height: 1.5; max-width: 60ch; }
+.mgmt-status-on  { color: var(--success, #22c55e); }
+.mgmt-status-off { color: var(--fg-muted); }
+.mgmt-row .btn { flex-shrink: 0; }
+
+/* Danger zone */
+.danger-zone {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  background: rgba(239, 68, 68, 0.04);
+}
+.danger-zone-header {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--error);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+.danger-zone-desc {
+  font-size: 12.5px;
+  color: var(--fg-muted);
+  line-height: 1.55;
+  margin-bottom: 12px;
+  max-width: 66ch;
+}
+.danger-zone-desc strong { color: var(--fg); }
+.danger-confirm { display: flex; flex-direction: column; gap: 12px; }
+.danger-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--fg);
+  line-height: 1.45;
+  cursor: pointer;
+}
+.danger-ack input { margin-top: 2px; accent-color: var(--error); flex-shrink: 0; }
+.danger-name-input {
+  max-width: 320px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--fg);
+}
+.danger-name-input:focus { outline: none; border-color: var(--error); }
+.danger-actions { display: flex; gap: 8px; }

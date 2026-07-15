@@ -102,15 +102,25 @@ function initSchema() {
              ON messages(sender_printer_id, created_at)`);
   const pCols = db.prepare("PRAGMA table_info(printers)").all().map(r => r.name);
   if (!pCols.includes("hidden")) db.exec("ALTER TABLE printers ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0");
+  // Soft-delete ("retire") support. We never hard-delete a printer because its id
+  // is referenced by messages (both as recipient and as sender_printer_id) that
+  // power history and two-sided threading. A retired printer keeps its row — so
+  // names still resolve and conversations stay intact — but its API key stops
+  // working and it disappears from the directory and from being a send target.
+  if (!pCols.includes("deleted_at")) db.exec("ALTER TABLE printers ADD COLUMN deleted_at TEXT");
 }
 
 // ── Printers ──────────────────────────────────────────────────────────────────
 
 function listPrinters(activeOnly = true) {
   const db = getDb();
+  // Retired (soft-deleted) printers are excluded from BOTH views — the public
+  // directory and the admin/superadmin list. Their row still exists so message
+  // history and threading keep resolving names, but they're no longer a live
+  // printer anyone can see or send to.
   const sql = activeOnly
-    ? `SELECT id, name, description, location, columns, font_size, created_at, last_seen FROM printers WHERE active = 1 AND hidden = 0 ORDER BY name`
-    : `SELECT id, name, description, location, active, hidden, api_key, columns, font_size, created_at, last_seen FROM printers ORDER BY name`;
+    ? `SELECT id, name, description, location, columns, font_size, created_at, last_seen FROM printers WHERE active = 1 AND hidden = 0 AND deleted_at IS NULL ORDER BY name`
+    : `SELECT id, name, description, location, active, hidden, api_key, columns, font_size, created_at, last_seen FROM printers WHERE deleted_at IS NULL ORDER BY name`;
   return db.prepare(sql).all();
 }
 
@@ -119,9 +129,11 @@ function getPrinterById(id) {
 }
 
 function getPrinterByApiKey(apiKey) {
-  // Note: no active filter here — an inactive printer must still be able to
-  // log into its own admin page to reactivate or delete itself.
-  return getDb().prepare(`SELECT * FROM printers WHERE api_key = ?`).get(apiKey);
+  // No `active` filter — an inactive printer must still be able to log into its
+  // own admin page to reactivate itself. But a RETIRED (soft-deleted) printer is
+  // gone for good: its key no longer authenticates, so it can't log in, send, or
+  // be reactivated. (Its row lives on only so historical messages resolve.)
+  return getDb().prepare(`SELECT * FROM printers WHERE api_key = ? AND deleted_at IS NULL`).get(apiKey);
 }
 
 function createPrinter({ id, name, description, location, api_key, columns, font_size }) {
@@ -235,6 +247,15 @@ function updatePrinter(id, fields) {
   ).run({ ...fields, id });
 }
 
+function softDeletePrinter(id) {
+  // "Retire" a printer: keep the row and every message intact so history and
+  // two-sided threading keep working (names still resolve, conversations stay
+  // whole), but stamp deleted_at so it's excluded from listings, auth, and
+  // sending. This is the user-facing delete — reversible in principle by an
+  // admin clearing deleted_at, and safe for all the references we care about.
+  getDb().prepare(`UPDATE printers SET deleted_at = datetime('now') WHERE id = ?`).run(id);
+}
+
 function hardDeletePrinter(id) {
   const db = getDb();
   // Messages this printer RECEIVED go away with it.
@@ -275,6 +296,21 @@ function getGlobalStats() {
        SUM(CASE WHEN source='web'      THEN 1 ELSE 0 END) AS from_web,
        SUM(CASE WHEN source='email'    THEN 1 ELSE 0 END) AS from_email,
        SUM(CASE WHEN source='api'      THEN 1 ELSE 0 END) AS from_api
+     FROM messages`
+  ).get();
+}
+
+// Lightweight, non-sensitive counters for the public directory.
+// created_at is stored via SQLite datetime('now'), which is UTC, so we compare
+// against UTC windows. "delivered" = messages that actually printed; the week
+// and today windows count all messages created in those spans regardless of
+// status, since from a visitor's view those represent site activity.
+function getPublicStats() {
+  return getDb().prepare(
+    `SELECT
+       SUM(CASE WHEN status='printed' THEN 1 ELSE 0 END)                    AS delivered,
+       SUM(CASE WHEN created_at >= datetime('now','-7 days') THEN 1 ELSE 0 END) AS this_week,
+       SUM(CASE WHEN created_at >= datetime('now','start of day') THEN 1 ELSE 0 END) AS today
      FROM messages`
   ).get();
 }
@@ -475,7 +511,7 @@ module.exports = {
   createPrinter, updatePrinterLastSeen, deactivatePrinter,
   createMessage, getMessageById, getPendingMessages,
   getRecentMessages, setMessageStatus, getStats,
-  updatePrinter, hardDeletePrinter, getAllMessages, getGlobalStats,
+  updatePrinter, hardDeletePrinter, softDeletePrinter, getAllMessages, getGlobalStats, getPublicStats,
   getSubscriptionsByPrinter, getSubscriptionById, getActiveSubscriptions,
   getPrinterMessages, getPrinterThreads, getThreadMessages, getRecentActivity,
   getSentMessages, getSentStats,

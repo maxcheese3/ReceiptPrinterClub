@@ -216,7 +216,7 @@ router.post(
       }
 
       const printer = db.getPrinterById(printer_id);
-      if (!printer || !printer.active) {
+      if (!printer || !printer.active || printer.deleted_at) {
         return res.status(404).json({ error: "Printer not found or inactive" });
       }
 
@@ -406,7 +406,7 @@ router.patch("/:id", (req, res) => {
 // ── GET /api/messages/:printer_id/recent ─────────────────────────────────────
 router.get("/:printer_id/recent", (req, res) => {
   const printer = db.getPrinterById(req.params.printer_id);
-  if (!printer || !printer.active) return res.status(404).json({ error: "Printer not found" });
+  if (!printer || !printer.active || printer.deleted_at) return res.status(404).json({ error: "Printer not found" });
   const messages = db.getRecentMessages(printer.id, 50);
   return res.json({ messages });
 });

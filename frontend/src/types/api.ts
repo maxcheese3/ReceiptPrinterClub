@@ -113,3 +113,10 @@ export interface PrinterStats {
   from_api: number;
   from_email: number;
 }
+
+/** Lightweight activity counters shown on the public directory. */
+export interface PublicStats {
+  delivered: number;
+  this_week: number;
+  today: number;
+}
