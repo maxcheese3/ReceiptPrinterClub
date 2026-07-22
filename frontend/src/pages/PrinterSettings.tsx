@@ -53,8 +53,12 @@ export default function PrinterSettings() {
     }
   }
 
+  // SQLite stores booleans as integers, so the API returns active/hidden as 0 or 1
+  // (not true/false). Compare by truthiness — `active !== false` would always be
+  // true for the number 0, which previously left deactivated printers showing as
+  // "Active" with no way to reactivate them.
   const isHidden = !!printer?.hidden;
-  const isActive = printer?.active !== false;
+  const isActive = !!printer?.active;
 
   function toggleHidden() {
     patchPrinter({ hidden: !isHidden }, !isHidden ? 'Printer hidden from the directory.' : 'Printer is now visible in the directory.');

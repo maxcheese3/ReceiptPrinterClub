@@ -6,8 +6,10 @@ export interface Printer {
   columns: number;
   font_size: number;
   last_seen?: string;
-  active?: boolean;
-  hidden?: boolean;
+  /** SQLite integer boolean: 0 or 1. Always test by truthiness, never `=== false`. */
+  active?: number | boolean;
+  /** SQLite integer boolean: 0 or 1. Always test by truthiness, never `=== false`. */
+  hidden?: number | boolean;
 }
 
 export interface Message {
