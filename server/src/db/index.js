@@ -108,6 +108,35 @@ function initSchema() {
   // names still resolve and conversations stay intact — but its API key stops
   // working and it disappears from the directory and from being a send target.
   if (!pCols.includes("deleted_at")) db.exec("ALTER TABLE printers ADD COLUMN deleted_at TEXT");
+  // Printer width in printhead dots replaces columns + font_size, which were
+  // "characters per line at some reference font" and never matched what the
+  // client actually printed. Backfill from the old columns value: the common
+  // widths map exactly, otherwise 30 or wider was an 80mm printer.
+  // LEGACY(old-client): printers.columns and printers.font_size (in CREATE TABLE
+  // and the migration above) are no longer read or returned; they stay so the
+  // server can still be rolled back to 3.x. Drop them (ALTER TABLE ... DROP
+  // COLUMN) once every printer reports a new client.
+  if (!pCols.includes("print_width_dots")) {
+    db.exec("ALTER TABLE printers ADD COLUMN print_width_dots INTEGER NOT NULL DEFAULT 384");
+    db.exec(`UPDATE printers SET print_width_dots = CASE
+               WHEN columns = 32 THEN 384
+               WHEN columns = 42 THEN 512
+               WHEN columns = 48 THEN 576
+               WHEN columns >= 30 THEN 576
+               ELSE 384 END`);
+  }
+  // How the client prints emoji: 'glyph' (custom printer characters) or 'text'
+  // (stand-ins like <3) for printers that don't support custom characters.
+  if (!pCols.includes("emoji_mode")) {
+    db.exec("ALTER TABLE printers ADD COLUMN emoji_mode TEXT NOT NULL DEFAULT 'glyph'");
+  }
+  // Special message kinds the client renders itself (currently 'test_page').
+  if (!msgCols.includes("kind")) db.exec("ALTER TABLE messages ADD COLUMN kind TEXT");
+  // Body text alignment chosen by the sender: 'center' or 'right' (NULL = left).
+  if (!msgCols.includes("align")) db.exec("ALTER TABLE messages ADD COLUMN align TEXT");
+  // Version of the print client that last polled, from its X-Client-Version
+  // header. NULL with a last_seen means a client from before 4.0 (no header).
+  if (!pCols.includes("client_version")) db.exec("ALTER TABLE printers ADD COLUMN client_version TEXT");
 }
 
 // ── Printers ──────────────────────────────────────────────────────────────────
@@ -119,9 +148,22 @@ function listPrinters(activeOnly = true) {
   // history and threading keep resolving names, but they're no longer a live
   // printer anyone can see or send to.
   const sql = activeOnly
-    ? `SELECT id, name, description, location, columns, font_size, created_at, last_seen FROM printers WHERE active = 1 AND hidden = 0 AND deleted_at IS NULL ORDER BY name`
-    : `SELECT id, name, description, location, active, hidden, api_key, columns, font_size, created_at, last_seen FROM printers WHERE deleted_at IS NULL ORDER BY name`;
+    ? `SELECT id, name, description, location, print_width_dots, client_version, created_at, last_seen FROM printers WHERE active = 1 AND hidden = 0 AND deleted_at IS NULL ORDER BY name`
+    : `SELECT id, name, description, location, active, hidden, api_key, print_width_dots, emoji_mode, client_version, created_at, last_seen FROM printers WHERE deleted_at IS NULL ORDER BY name`;
   return db.prepare(sql).all();
+}
+
+// The fields a printer's owner (or anyone holding its key) gets back. Never
+// includes api_key; add it explicitly where the caller is allowed to see it.
+function printerInfo(row) {
+  const {
+    id, name, description, location, print_width_dots, emoji_mode, client_version,
+    active, hidden, created_at, last_seen,
+  } = row;
+  return {
+    id, name, description, location, print_width_dots, emoji_mode, client_version,
+    active, hidden, created_at, last_seen,
+  };
 }
 
 function getPrinterById(id) {
@@ -136,16 +178,16 @@ function getPrinterByApiKey(apiKey) {
   return getDb().prepare(`SELECT * FROM printers WHERE api_key = ? AND deleted_at IS NULL`).get(apiKey);
 }
 
-function createPrinter({ id, name, description, location, api_key, columns, font_size }) {
+function createPrinter({ id, name, description, location, api_key, print_width_dots }) {
   getDb().prepare(
-    `INSERT INTO printers (id, name, description, location, api_key, columns, font_size)
-     VALUES (@id, @name, @description, @location, @api_key, @columns, @font_size)`
-  ).run({ id, name, description, location, api_key, columns, font_size });
+    `INSERT INTO printers (id, name, description, location, api_key, print_width_dots)
+     VALUES (@id, @name, @description, @location, @api_key, @print_width_dots)`
+  ).run({ id, name, description, location, api_key, print_width_dots });
   return getPrinterById(id);
 }
 
-function updatePrinterLastSeen(id) {
-  getDb().prepare(`UPDATE printers SET last_seen = datetime('now') WHERE id = ?`).run(id);
+function updatePrinterLastSeen(id, clientVersion = null) {
+  getDb().prepare(`UPDATE printers SET last_seen = datetime('now'), client_version = ? WHERE id = ?`).run(clientVersion, id);
 }
 
 function deactivatePrinter(id) {
@@ -154,16 +196,18 @@ function deactivatePrinter(id) {
 
 // ── Messages ─────────────────────────────────────────────────────────────────
 
-function createMessage({ id, printer_id, source, sender_name, sender_email, body, image_path, word_wrap, font_size, sender_printer_id }) {
+function createMessage({ id, printer_id, source, sender_name, sender_email, body, image_path, word_wrap, font_size, align, sender_printer_id, kind }) {
   getDb().prepare(
-    `INSERT INTO messages (id, printer_id, source, sender_name, sender_email, body, image_path, word_wrap, font_size, sender_printer_id)
-     VALUES (@id, @printer_id, @source, @sender_name, @sender_email, @body, @image_path, @word_wrap, @font_size, @sender_printer_id)`
+    `INSERT INTO messages (id, printer_id, source, sender_name, sender_email, body, image_path, word_wrap, font_size, align, sender_printer_id, kind)
+     VALUES (@id, @printer_id, @source, @sender_name, @sender_email, @body, @image_path, @word_wrap, @font_size, @align, @sender_printer_id, @kind)`
   ).run({
     id, printer_id, source, sender_name, sender_email, body,
     image_path:        image_path || null,
     word_wrap:         word_wrap ?? 1,
     font_size:         font_size || null,
+    align:             align === "center" || align === "right" ? align : null,
     sender_printer_id: sender_printer_id || null,
+    kind:              kind || null,
   });
   return getMessageById(id);
 }
@@ -176,6 +220,14 @@ function getPendingMessages(printer_id) {
   return getDb().prepare(
     `SELECT * FROM messages WHERE printer_id = ? AND status = 'pending' ORDER BY created_at ASC`
   ).all(printer_id);
+}
+
+// True while a test page for this printer is still waiting to be printed, so
+// repeated clicks don't queue a stack of them.
+function hasPendingTestPage(printer_id) {
+  return !!getDb().prepare(
+    `SELECT 1 FROM messages WHERE printer_id = ? AND kind = 'test_page' AND status = 'pending' LIMIT 1`
+  ).get(printer_id);
 }
 
 function getRecentMessages(printer_id, limit = 50) {
@@ -242,7 +294,8 @@ function updatePrinter(id, fields) {
   getDb().prepare(
     `UPDATE printers
      SET name = @name, description = @description, location = @location,
-         columns = @columns, font_size = @font_size, active = @active, hidden = @hidden
+         print_width_dots = @print_width_dots, emoji_mode = @emoji_mode,
+         active = @active, hidden = @hidden
      WHERE id = @id`
   ).run({ ...fields, id });
 }
@@ -359,18 +412,25 @@ function deleteSubscription(id) {
 
 // ── Printer Admin queries ─────────────────────────────────────────────────────
 
+// Received messages. sender_printer_name is the sending printer's name when the
+// message came from a logged-in user (sender_printer_id set), so the UI can show
+// who it really is alongside the free-text sender_name.
 function getPrinterMessages(printer_id, { limit = 50, offset = 0, sender = null }) {
   if (sender) {
     return getDb().prepare(
-      `SELECT * FROM messages
-       WHERE printer_id = ? AND sender_name = ?
-       ORDER BY created_at DESC LIMIT ? OFFSET ?`
+      `SELECT m.*, sp.name AS sender_printer_name
+         FROM messages m
+         LEFT JOIN printers sp ON sp.id = m.sender_printer_id
+        WHERE m.printer_id = ? AND m.sender_name = ?
+        ORDER BY m.created_at DESC, m.rowid DESC LIMIT ? OFFSET ?`
     ).all(printer_id, sender, limit, offset);
   }
   return getDb().prepare(
-    `SELECT * FROM messages
-     WHERE printer_id = ?
-     ORDER BY created_at DESC LIMIT ? OFFSET ?`
+    `SELECT m.*, sp.name AS sender_printer_name
+       FROM messages m
+       LEFT JOIN printers sp ON sp.id = m.sender_printer_id
+      WHERE m.printer_id = ?
+      ORDER BY m.created_at DESC, m.rowid DESC LIMIT ? OFFSET ?`
   ).all(printer_id, limit, offset);
 }
 
@@ -393,12 +453,16 @@ function getPrinterMessages(printer_id, { limit = 50, offset = 0, sender = null 
 function getPrinterThreads(printer_id) {
   const db = getDb();
 
+  // "Latest" lookups break created_at ties (it only has one-second resolution)
+  // by insertion order, so a conversation's latest body, image, direction,
+  // word_wrap and source all come from the same, actually-newest message.
+
   // Two-sided conversations with other printers.
   const printerThreads = db.prepare(
     `WITH convo AS (
        SELECT
          CASE WHEN m.printer_id = @me THEN m.sender_printer_id ELSE m.printer_id END AS other_id,
-         m.body, m.image_path, m.created_at,
+         m.rowid AS seq, m.body, m.word_wrap, m.source, m.image_path, m.created_at,
          CASE WHEN m.printer_id = @me THEN 'in' ELSE 'out' END AS direction
        FROM messages m
        WHERE (m.printer_id = @me AND m.sender_printer_id IS NOT NULL)
@@ -412,12 +476,16 @@ function getPrinterThreads(printer_id) {
        COUNT(*)                 AS message_count,
        MAX(c.created_at)        AS latest_at,
        (SELECT body       FROM convo c2 WHERE c2.other_id = c.other_id
-         ORDER BY c2.created_at DESC LIMIT 1) AS latest_body,
+         ORDER BY c2.created_at DESC, c2.seq DESC LIMIT 1) AS latest_body,
+       (SELECT word_wrap  FROM convo c5 WHERE c5.other_id = c.other_id
+         ORDER BY c5.created_at DESC, c5.seq DESC LIMIT 1) AS latest_word_wrap,
+       (SELECT source     FROM convo c6 WHERE c6.other_id = c.other_id
+         ORDER BY c6.created_at DESC, c6.seq DESC LIMIT 1) AS latest_source,
        (SELECT image_path FROM convo c3 WHERE c3.other_id = c.other_id
           AND c3.image_path IS NOT NULL
-         ORDER BY c3.created_at DESC LIMIT 1) AS latest_image,
+         ORDER BY c3.created_at DESC, c3.seq DESC LIMIT 1) AS latest_image,
        (SELECT direction  FROM convo c4 WHERE c4.other_id = c.other_id
-         ORDER BY c4.created_at DESC LIMIT 1) AS latest_direction
+         ORDER BY c4.created_at DESC, c4.seq DESC LIMIT 1) AS latest_direction
      FROM convo c
      LEFT JOIN printers p ON p.id = c.other_id
      GROUP BY c.other_id
@@ -437,13 +505,23 @@ function getPrinterThreads(printer_id) {
          WHERE m2.printer_id = m.printer_id
            AND m2.sender_printer_id IS NULL
            AND m2.sender_name IS m.sender_name
-         ORDER BY m2.created_at DESC LIMIT 1) AS latest_body,
+         ORDER BY m2.created_at DESC, m2.rowid DESC LIMIT 1) AS latest_body,
+       (SELECT word_wrap FROM messages m5
+         WHERE m5.printer_id = m.printer_id
+           AND m5.sender_printer_id IS NULL
+           AND m5.sender_name IS m.sender_name
+         ORDER BY m5.created_at DESC, m5.rowid DESC LIMIT 1) AS latest_word_wrap,
+       (SELECT source FROM messages m6
+         WHERE m6.printer_id = m.printer_id
+           AND m6.sender_printer_id IS NULL
+           AND m6.sender_name IS m.sender_name
+         ORDER BY m6.created_at DESC, m6.rowid DESC LIMIT 1) AS latest_source,
        (SELECT image_path FROM messages m3
          WHERE m3.printer_id = m.printer_id
            AND m3.sender_printer_id IS NULL
            AND m3.sender_name IS m.sender_name
            AND m3.image_path IS NOT NULL
-         ORDER BY m3.created_at DESC LIMIT 1) AS latest_image,
+         ORDER BY m3.created_at DESC, m3.rowid DESC LIMIT 1) AS latest_image,
        'in'              AS latest_direction
      FROM messages m
      WHERE m.printer_id = ?
@@ -456,8 +534,8 @@ function getPrinterThreads(printer_id) {
     .sort((a, b) => (a.latest_at < b.latest_at ? 1 : -1));
 }
 
-// Full message list for one thread, oldest-first (chat order), each tagged with
-// its direction so the UI can align sent/received on opposite sides.
+// Full message list for one thread, newest-first, each tagged with its
+// direction so the UI can align sent/received on opposite sides.
 //
 // For a printer thread pass counterparty_id; for a guest thread pass sender_name.
 function getThreadMessages(printer_id, { counterparty_id = null, sender_name = undefined } = {}) {
@@ -470,7 +548,7 @@ function getThreadMessages(printer_id, { counterparty_id = null, sender_name = u
          FROM messages m
         WHERE (m.printer_id = @me    AND m.sender_printer_id = @other)
            OR (m.sender_printer_id = @me AND m.printer_id    = @other)
-        ORDER BY m.created_at ASC`
+        ORDER BY m.created_at DESC, m.rowid DESC`
     ).all({ me: printer_id, other: counterparty_id });
   }
 
@@ -482,34 +560,36 @@ function getThreadMessages(printer_id, { counterparty_id = null, sender_name = u
       WHERE m.printer_id = ?
         AND m.sender_printer_id IS NULL
         AND m.sender_name IS ?
-      ORDER BY m.created_at ASC`
+      ORDER BY m.created_at DESC, m.rowid DESC`
   ).all(printer_id, sender_name ?? null);
 }
 
 // Recent activity in BOTH directions — powers the "Your recent messages" panel
-// on the send page for logged-in users.
-function getRecentActivity(printer_id, { limit = 10 } = {}) {
+// on the send page and the All tab of message history for logged-in users.
+function getRecentActivity(printer_id, { limit = 10, offset = 0 } = {}) {
   return getDb().prepare(
     `SELECT m.*,
             CASE WHEN m.printer_id = @me THEN 'in' ELSE 'out' END AS direction,
             CASE WHEN m.printer_id = @me
                  THEN COALESCE(sp.name, m.sender_name)
                  ELSE rp.name
-            END AS counterparty_name
+            END AS counterparty_name,
+            sp.name AS sender_printer_name,
+            rp.name AS recipient_name
        FROM messages m
        LEFT JOIN printers sp ON sp.id = m.sender_printer_id
        LEFT JOIN printers rp ON rp.id = m.printer_id
       WHERE m.printer_id = @me OR m.sender_printer_id = @me
-      ORDER BY m.created_at DESC
-      LIMIT @limit`
-  ).all({ me: printer_id, limit });
+      ORDER BY m.created_at DESC, m.rowid DESC
+      LIMIT @limit OFFSET @offset`
+  ).all({ me: printer_id, limit, offset });
 }
 
 module.exports = {
   getDb,
-  listPrinters, getPrinterById, getPrinterByApiKey,
+  listPrinters, printerInfo, getPrinterById, getPrinterByApiKey,
   createPrinter, updatePrinterLastSeen, deactivatePrinter,
-  createMessage, getMessageById, getPendingMessages,
+  createMessage, getMessageById, getPendingMessages, hasPendingTestPage,
   getRecentMessages, setMessageStatus, getStats,
   updatePrinter, hardDeletePrinter, softDeletePrinter, getAllMessages, getGlobalStats, getPublicStats,
   getSubscriptionsByPrinter, getSubscriptionById, getActiveSubscriptions,

@@ -16,6 +16,8 @@ services:
 
     # ── Scenario A: printer connected by USB to THIS machine ──────────────────
     # Requires PRINTER_DEVICE=/dev/usb/lp0 (or similar) in your .env.
+    # A Bluetooth printer bound with `rfcomm bind` works the same way: pass
+    # /dev/rfcomm0 through instead and set PRINTER_DEVICE=/dev/rfcomm0.
     # Find the host group that owns the device with: getent group lp
     # (commonly GID 20 on Debian/Ubuntu — check yours, it does vary)
     devices:

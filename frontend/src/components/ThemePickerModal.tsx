@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { Theme } from '../hooks/useTheme';
-import { getResolvedTheme } from '../hooks/useTheme';
+import { getResolvedTheme, printerIconHref } from '../hooks/useTheme';
 
-const CAROUSEL_THEMES: Theme[] = ['dark', 'light', 'rush', 'beans', 'shrek', 'transit', 'system', 'hellokitty'];
+const CAROUSEL_THEMES: Theme[] = ['dark', 'light', 'rush', 'beans', 'shrek', 'transit', 'muthur', 'system', 'hellokitty'];
 
 const THEME_LABELS: Record<Theme, string> = {
   dark: 'Dark Mode',
@@ -12,19 +12,9 @@ const THEME_LABELS: Record<Theme, string> = {
   beans: 'Beans',
   shrek: 'Shrek',
   transit: 'TriMet',
+  muthur: 'MU/TH/UR',
   system: 'Match System',
   hellokitty: 'Hello Kitty',
-};
-
-const THEME_EMOJIS: Record<Theme, string> = {
-  dark: '🌑',
-  light: '☀️',
-  rush: '🚲',
-  beans: '🫘',
-  shrek: '🧅',
-  transit: '🚌',
-  system: '🔄',
-  hellokitty: '🐱',
 };
 
 interface ThemePickerModalProps {
@@ -105,7 +95,13 @@ export default function ThemePickerModal({ theme, onThemeChange, onClose }: Them
           </button>
 
           <div className="theme-carousel-center">
-            <span className="theme-carousel-emoji">{THEME_EMOJIS[tempTheme]}</span>
+            {/* The same printer icon the browser tab shows in this theme. For
+                System and Hello Kitty, it's whichever variant applies right now. */}
+            <img
+              className="theme-carousel-icon"
+              src={printerIconHref(getResolvedTheme(tempTheme))}
+              alt=""
+            />
             <span className="theme-carousel-name">{THEME_LABELS[tempTheme]}</span>
             {resolvedLabel && (
               <span className="theme-carousel-sub">{resolvedLabel}</span>

@@ -5,7 +5,7 @@ import ThemePickerModal from './ThemePickerModal';
 import Footer from './Footer';
 import type { Theme } from '../hooks/useTheme';
 import { usePrinters } from '../hooks/usePrinters';
-import { printerStatusText } from './PrinterChecklist';
+import { printerStatusText } from '../lib/printers';
 
 interface LayoutProps {
   children: React.ReactNode;

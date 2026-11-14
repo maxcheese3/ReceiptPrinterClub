@@ -1,35 +1,49 @@
 # Linux / macOS Client Setup
 
-The PrintBridge client talks to your thermal printer in one of two ways.
-**Use the raw USB/ESC-POS device path if you can — it's simpler, needs no
-system libraries, and is what most receipt printers actually expect.**
+The client sends the same ESC/POS commands on every platform. The only thing
+that differs between setups is **where the printer is**, which you set in
+`client/.env`. Characters per line and emoji style are set on the website's
+**My Printer** page.
 
-| Path | When to use it | Setup |
-|------|-----------------|-------|
-| **Raw device (recommended)** | Printer is connected by USB (or shows up as a serial device on macOS) | Set `PRINTER_DEVICE`, done |
-| **CUPS** | Printer is only reachable through a CUPS queue (e.g. shared/networked) | Set `PRINTER_NAME`, CUPS installed |
+| Printer connection | `.env` |
+|--------------------|--------|
+| USB, plugged into this machine | `PRINTER_DEVICE=/dev/usb/lp0` |
+| Bluetooth | `PRINTER_DEVICE=/dev/rfcomm0` |
+| USB/serial on macOS | `PRINTER_DEVICE=/dev/cu.usbserial-XXXX` |
+| Network / wifi, or anything already in CUPS | `PRINTER_NAME=queue-name` |
+| A printer that ignores ESC/POS (e.g. Star TSP100) | `PRINTER_NAME=queue-name` + `PRINT_MODE=driver` |
 
-Both paths render text and images with the exact same ESC/POS logic — CUPS
-mode just delivers those bytes through `lp -o raw` instead of writing directly
-to a device file. You get identical output either way.
+## Option A — Device file (USB or Bluetooth)
 
-## Option A — Raw USB device (recommended)
+Fastest and simplest: no CUPS, no drivers.
 
 ### 1. Find your device path
 
 ```bash
-# Linux
+# Linux USB
 ls /dev/usb/lp*   # e.g. /dev/usb/lp0
 ls /dev/lp*       # some setups expose it here instead
 
 # macOS
-ls /dev/cu.usb*   # e.g. /dev/cu.usbserial-1410
+ls /dev/cu.*      # e.g. /dev/cu.usbserial-1410
 ```
+
+**Bluetooth (Linux):** pair the printer, then bind it to a serial device:
+
+```bash
+bluetoothctl            # then: scan on, pair XX:XX:XX:XX:XX:XX, trust XX:XX:XX:XX:XX:XX
+sudo rfcomm bind 0 XX:XX:XX:XX:XX:XX
+ls /dev/rfcomm0
+```
+
+`rfcomm bind` doesn't survive a reboot; add it to a systemd unit or
+`/etc/rc.local` if you need it to.
 
 ### 2. Grant permission (Linux)
 
 ```bash
-sudo usermod -aG lp $USER
+sudo usermod -aG lp $USER        # USB
+sudo usermod -aG dialout $USER   # Bluetooth (/dev/rfcomm*)
 # log out and back in for this to take effect
 ```
 
@@ -44,96 +58,53 @@ sudo chmod a+rw /dev/cu.usbserial-XXXX
 SERVER_URL=https://print.yourdomain.com
 API_KEY=your-api-key-here
 PRINTER_DEVICE=/dev/usb/lp0
-PRINT_FONT_SIZE=9
-PRINT_COLUMNS=24
-PRINT_WIDTH_MM=58
-PRINT_DPI=203
 ```
 
-That's it — no CUPS, no `canvas`, no native build tools required.
-
-## Option B — CUPS
-
-Use this if the printer isn't directly attached (e.g. it's shared over the
-network, or another app already manages it through CUPS).
-
-### 1. Install CUPS and register the printer
+## Option B — CUPS queue (network, wifi, shared printers)
 
 ```bash
 # Debian / Ubuntu
 sudo apt install cups
-
 # Fedora / RHEL
 sudo dnf install cups
 
-# List available printers
+# List printers
 lpstat -p
 ```
-
-### 2. Configure `.env`
 
 ```env
 SERVER_URL=https://print.yourdomain.com
 API_KEY=your-api-key-here
 PRINTER_NAME=your-cups-printer-name   # from lpstat -p
-PRINT_FONT_SIZE=9
-PRINT_COLUMNS=24
-PRINT_WIDTH_MM=58
-PRINT_DPI=203
 ```
 
-By default (`PRINT_CUPS_MODE=raw`, the default — no need to set it) the client
-builds the same ESC/POS bytes as Option A and sends them with `lp -o raw`,
-which tells CUPS to skip its filter chain and stream the bytes straight to the
-printer. This matches how almost every thermal receipt printer is actually
-registered in CUPS (as a raw/generic queue), and avoids a common failure mode:
-**sending a rendered PNG to a queue with no image filter doesn't error — CUPS
-just streams the literal PNG bytes to the printer, which prints every byte as
-its ASCII character, producing a receipt full of garbled symbols.** This is
-the #1 cause of "images print as random characters" reports, and it's
-inconsistent across machines because it depends on how each printer's queue
-happens to be configured rather than anything about the image itself.
+The client sends the same ESC/POS bytes as Option A through `lp -o raw`, so
+CUPS passes them to the printer untouched. Register the printer in CUPS as a
+**raw** queue (or "Generic / Raw" driver) — a queue with a real driver also
+works, since `-o raw` skips the driver.
 
-### Optional: legacy PNG rendering
+## Option C — Driver mode (printers that ignore ESC/POS)
 
-If your CUPS queue genuinely has an image-capable driver (uncommon for
-receipt printers) and you'd rather have real anti-aliased fonts, you can opt
-back into the old rendering path:
+Some printers, like the Star TSP100 series, only accept their own raster
+format and silently ignore ESC/POS. For those, print through the CUPS driver:
 
 ```env
-PRINT_CUPS_MODE=image
+PRINTER_NAME=Star_TSP143
+PRINT_MODE=driver
+# PRINT_CUPS_MEDIA=X72MMY2000MM   # only if the default media name doesn't suit your driver
 ```
 
-This requires the optional `canvas` package and its native build dependencies:
+Line breaks and sizes match the ESC/POS output. Bold, underline and banners
+don't show, and emoji print as text stand-ins (`<3`, `:D`).
 
-```bash
-# Debian / Ubuntu
-sudo apt install build-essential libcairo2-dev libpango1.0-dev \
-  libjpeg-dev libgif-dev librsvg2-dev
+## Install & run
 
-# Fedora / RHEL
-sudo dnf install gcc-c++ cairo-devel pango-devel libjpeg-devel giflib-devel
-
-cd client/
-npm install canvas
-```
-
-Install a monospace font for best results:
-```bash
-# Debian / Ubuntu
-sudo apt install fonts-liberation
-# Fedora / RHEL
-sudo dnf install liberation-mono-fonts
-```
-
-## Node.js (18+)
+Node.js 18 or newer:
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -
 sudo apt install nodejs
 ```
-
-## Install & run
 
 ```bash
 cd client/
@@ -143,51 +114,67 @@ nano .env
 node client.js
 ```
 
-## Troubleshooting
+## Check it with a test page
 
-**Images print as garbled characters / random symbols.** This was the default
-behavior in older versions of the client when using CUPS mode, caused by
-sending a PNG to a raw queue. Update the client and make sure
-`PRINT_CUPS_MODE` is unset or set to `raw` (the default) — do not set it to
-`image` unless you know your queue has a real image driver. If you're on the
-raw device path (`PRINTER_DEVICE` set) and still see this on very tall
-images, lower `PRINT_RASTER_CHUNK_ROWS` (try 128) — some printers have a
-small internal image buffer that overflows on a single large graphics command.
-
-**Permission denied on the device.** `sudo usermod -aG lp $USER`, then log out
-and back in. Test with `sudo chmod a+rw /dev/usb/lp0` to confirm it's a
-permissions issue before making the group change permanent.
-
-## Run as a systemd service
-
-Create `/etc/systemd/system/printbridge.service`:
-
-```ini
-[Unit]
-Description=PrintBridge Print Client
-After=network.target
-
-[Service]
-Type=simple
-User=YOUR_USER
-WorkingDirectory=/path/to/printbridge/client
-ExecStart=/usr/bin/node client.js
-Restart=always
-RestartSec=5
-Environment=NODE_ENV=production
-
-[Install]
-WantedBy=multi-user.target
-```
+Log in on the website's **My Printer** page and click **Print test page**, or
+run:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable printbridge
-sudo systemctl start printbridge
-sudo journalctl -u printbridge -f   # view logs
+node client.js --test-page            # uses the width saved on My Printer
+node client.js --test-page --cols 42  # try a width before saving it
 ```
 
-## macOS
+The page prints:
 
-Everything above applies the same way. Find your device with `ls /dev/cu.usb*`
-for Option A, or `lpstat -p` for Option B. Install Node via `nvm` or Homebrew.
+- **A character ruler.** The last number on its first line is how many
+  Normal-size characters fit. If it doesn't match the "Expected" number, set
+  Characters per line on My Printer to that number.
+- **An edge bar.** Both thick bars should print; if the right one is cut off,
+  Characters per line is set too high.
+- **One line per size.** Each should fit on a single line.
+- **An emoji row.** If it prints pictures, set Emoji to Pictures on My
+  Printer. If it prints letters or symbols, your printer doesn't support
+  custom characters — set Emoji to Text.
+
+## Troubleshooting
+
+**Images print as garbled characters / random symbols.** Lower
+`PRINT_RASTER_CHUNK_ROWS` (try 128) — some printers have a small image buffer
+that overflows on a large graphics command. If text prints but nothing else
+does, the printer may not support ESC/POS graphics; try `PRINT_MODE=driver`.
+
+**Nothing prints, but the message shows as printed.** The printer is probably
+ignoring ESC/POS (see Option C).
+
+**Permission denied on the device.** Join the `lp` (USB) or `dialout`
+(Bluetooth) group, then log out and back in. Test with
+`sudo chmod a+rw /dev/usb/lp0` to confirm it's a permissions issue before
+making the group change permanent.
+
+<!-- LEGACY(old-client): upgrade help — remove once every printer reports a new client. -->
+**Warnings about `PRINT_COLUMNS`, `PRINT_FONT_SIZE`, `PRINT_WIDTH_MM`,
+`PRINT_DPI` or `PRINT_CUPS_MODE`.** Those settings were removed — delete them
+from `.env`. Characters per line is on My Printer, senders choose the size, and
+`PRINT_CUPS_MODE` is replaced by `PRINT_MODE`.
+
+## Run as a service
+
+```bash
+node install-service.js
+```
+
+On Linux this writes a systemd unit file and prints the commands to install
+it; on macOS it installs and starts a LaunchAgent. The service reads `.env`
+from the `client/` folder each time it starts, so after editing `.env`,
+restart it:
+
+```bash
+sudo systemctl restart printbridge-client          # Linux
+launchctl unload ~/Library/LaunchAgents/com.printbridge.client.plist && \
+  launchctl load ~/Library/LaunchAgents/com.printbridge.client.plist   # macOS
+```
+
+<!-- LEGACY(old-client): upgrade help — remove once every printer reports a new client. -->
+If you installed the service with an older version, run `node install-service.js`
+again: older versions copied `.env` values into the service, which would keep
+overriding your `.env`.

@@ -1,30 +1,20 @@
 # PrintBridge Client — container image
 #
-# Default build: raw ESC/POS support (no native deps) + cups-client (`lp`)
-# so CUPS mode also works out of the box. Canvas (legacy PRINT_CUPS_MODE=image
-# text rendering) is opt-in via a build arg since it needs a slower native
-# build and isn't needed by the default, recommended print path.
+# Pure JavaScript — no native dependencies. Includes cups-client (`lp`) so a
+# CUPS queue works as well as a raw device.
 #
 #   docker build -t printbridge-client .
-#   docker build -t printbridge-client --build-arg WITH_CANVAS=true .
 
 FROM node:20-alpine
 
-# cups-client provides `lp`/`lpstat`, used by CUPS mode (PRINTER_NAME set).
-# Raw ESC/POS mode (PRINTER_DEVICE set, the default recommendation) doesn't
-# need it, but it's a couple hundred KB so it's always included for convenience.
+# cups-client provides `lp`/`lpstat`, used when PRINTER_NAME is set instead of
+# PRINTER_DEVICE. It's a couple hundred KB, so it's always included.
 RUN apk add --no-cache cups-client tzdata
-
-ARG WITH_CANVAS=false
-RUN if [ "$WITH_CANVAS" = "true" ]; then \
-      apk add --no-cache build-base cairo-dev pango-dev jpeg-dev giflib-dev librsvg-dev python3; \
-    fi
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev --omit=optional \
-  && if [ "$WITH_CANVAS" = "true" ]; then npm install canvas; fi \
   && npm cache clean --force
 
 COPY . .

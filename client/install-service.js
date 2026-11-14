@@ -12,9 +12,12 @@
  *
  *   Linux    — outputs a systemd unit file you can install manually.
  *     node install-service.js
+ *
+ * The service runs client.js, which reads .env from its own folder, so
+ * settings aren't copied into the service. Edit .env and restart the service
+ * to change them.
  */
 
-require("dotenv").config();
 const path = require("path");
 const fs   = require("fs");
 const os   = require("os");
@@ -31,13 +34,6 @@ if (IS_WINDOWS) {
     name:        "PrintBridge Client",
     description: "Polls PrintBridge server and prints messages to the local printer.",
     script:      path.join(__dirname, "client.js"),
-    env: [
-      { name: "SERVER_URL",        value: process.env.SERVER_URL       || "http://localhost:3000" },
-      { name: "API_KEY",           value: process.env.API_KEY          || "" },
-      { name: "POLL_INTERVAL_MS",  value: process.env.POLL_INTERVAL_MS || "5000" },
-      { name: "TEMP_DIR",          value: process.env.TEMP_DIR         || "" },
-      { name: "LOG_LEVEL",         value: process.env.LOG_LEVEL        || "info" },
-    ],
     maxRestarts: 3,
     wait: 3,
     grow: 0.5,
@@ -78,27 +74,6 @@ else if (IS_MAC) {
       console.error("Could not remove plist:", err.message);
     }
   } else {
-    // Build environment variables dict from .env
-    const envEntries = [
-      ["SERVER_URL",        process.env.SERVER_URL       || "http://localhost:3000"],
-      ["API_KEY",           process.env.API_KEY          || ""],
-      ["POLL_INTERVAL_MS",  process.env.POLL_INTERVAL_MS || "5000"],
-      ["PRINTER_DEVICE",    process.env.PRINTER_DEVICE   || ""],
-      ["PRINTER_NAME",      process.env.PRINTER_NAME     || ""],
-      ["PRINT_FONT_SIZE",   process.env.PRINT_FONT_SIZE  || "9"],
-      ["PRINT_COLUMNS",     process.env.PRINT_COLUMNS    || "24"],
-      ["PRINT_WIDTH_MM",    process.env.PRINT_WIDTH_MM   || "58"],
-      ["PRINT_DPI",         process.env.PRINT_DPI        || "203"],
-      ["TEMP_DIR",          process.env.TEMP_DIR         || ""],
-      ["LOG_LEVEL",         process.env.LOG_LEVEL        || "info"],
-      ["ARCHIVE_ENABLED",   process.env.ARCHIVE_ENABLED  || "true"],
-      ["ARCHIVE_DIR",       process.env.ARCHIVE_DIR      || ""],
-    ].filter(([, v]) => v !== ""); // omit empty values
-
-    const envXml = envEntries
-      .map(([k, v]) => `\t\t<key>${k}</key>\n\t\t<string>${v}</string>`)
-      .join("\n");
-
     fs.mkdirSync(AGENTS_DIR, { recursive: true });
     fs.mkdirSync(LOG_DIR,    { recursive: true });
 
@@ -118,11 +93,6 @@ else if (IS_MAC) {
 
 \t<key>WorkingDirectory</key>
 \t<string>${__dirname}</string>
-
-\t<key>EnvironmentVariables</key>
-\t<dict>
-${envXml}
-\t</dict>
 
 \t<!-- Start at login and keep alive if it crashes -->
 \t<key>RunAtLoad</key>
@@ -174,16 +144,6 @@ WorkingDirectory=${__dirname}
 ExecStart=${process.execPath} ${path.join(__dirname, "client.js")}
 Restart=on-failure
 RestartSec=5
-Environment="SERVER_URL=${process.env.SERVER_URL       || "http://localhost:3000"}"
-Environment="API_KEY=${process.env.API_KEY             || ""}"
-Environment="POLL_INTERVAL_MS=${process.env.POLL_INTERVAL_MS || "5000"}"
-Environment="PRINTER_DEVICE=${process.env.PRINTER_DEVICE  || ""}"
-Environment="PRINTER_NAME=${process.env.PRINTER_NAME    || ""}"
-Environment="PRINT_FONT_SIZE=${process.env.PRINT_FONT_SIZE || "9"}"
-Environment="PRINT_COLUMNS=${process.env.PRINT_COLUMNS   || "24"}"
-Environment="PRINT_WIDTH_MM=${process.env.PRINT_WIDTH_MM  || "58"}"
-Environment="PRINT_DPI=${process.env.PRINT_DPI       || "203"}"
-Environment="LOG_LEVEL=${process.env.LOG_LEVEL       || "info"}"
 StandardOutput=journal
 StandardError=journal
 

@@ -4,7 +4,6 @@ import { PrinterAuthProvider } from './contexts/PrinterAuthContext';
 import Layout from './components/Layout';
 import MessageModal from './components/MessageModal';
 import { useTheme } from './hooks/useTheme';
-import SendMessage from './pages/SendMessage';
 import SendMessageV2 from './pages/SendMessageV2';
 import RegisterPrinter from './pages/RegisterPrinter';
 import ApiDocs from './pages/ApiDocs';
@@ -28,7 +27,6 @@ export default function App() {
         <Layout theme={theme} onThemeChange={setTheme}>
           <Routes>
             <Route path="/" element={<Navigate to="/send-message" replace />} />
-            <Route path="/send" element={<SendMessage />} />
             <Route path="/send-message" element={<SendMessageV2 />} />
             <Route path="/register" element={<RegisterPrinter />} />
             <Route path="/docs" element={<ApiDocs />} />

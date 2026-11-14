@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { Message } from '../types/api';
+import { displayBody } from '../lib/messageText';
 
 interface MessageModalProps {
   message: Message | null;
@@ -38,7 +39,7 @@ export default function MessageModal({ message, onClose }: MessageModalProps) {
           <span id="msg-modal-meta">{meta}</span>
           <button className="msg-modal-close" onClick={onClose}>✕</button>
         </div>
-        <pre className="msg-modal-body">{message.body ?? '(no text body)'}</pre>
+        <pre className="msg-modal-body">{displayBody(message) ?? '(no text body)'}</pre>
         {message.image_path && (
           <div className="msg-modal-img">
             <img

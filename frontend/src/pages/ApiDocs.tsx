@@ -11,15 +11,15 @@ export default function ApiDocs() {
           <div className="endpoint-header">
             <span className="method get">GET</span><code>/api/printers</code>
           </div>
-          <p>List all active printers. Each printer includes <code>id</code>, <code>name</code>, <code>location</code>, <code>description</code>, <code>columns</code>, <code>font_size</code>, and <code>last_seen</code>.</p>
+          <p>List all active printers.</p>
           <pre><code>{`{
   "printers": [
     {
       "id": "uuid",
       "name": "Front Desk",
       "location": "Lobby",
-      "columns": 24,
-      "font_size": 9,
+      "print_width_dots": 384,      // 384 / 512 / 576 = 32 / 42 / 48 chars per line
+      "client_version": "4.0.0",    // null = old client or never connected
       "last_seen": "2026-05-06T12:00:00"
     }
   ]
@@ -41,9 +41,14 @@ Content-Type: application/json
   "printer_id":  "uuid",
   "sender_name": "Jane Smith",       // optional — shown in From: header
   "body":        "Hello! 👋",        // supports unicode and emoji
-  "word_wrap":   1,                  // 1 = wrap at column limit, 0 = as-is
-  "font_size":   9                   // 7 8 9 10 11 12 14 — affects body text size
+  "word_wrap":   1,                  // 1 = wrap + formatting, 0 = print as typed
+  "font_size":   9,                  // 7 · 9 (default) · 12 · 17 · 25
+  "align":       "left"              // left · center · right
 }`}</code></pre>
+
+          <p><strong>Formatting</strong> (when <code>word_wrap</code> is 1)</p>
+          <pre><code>{`# Box    ## Banner    ### Title    #### Subtitle
+---      **bold**     __underline__`}</code></pre>
 
           <p><strong>Image by URL</strong></p>
           <pre><code>{`{
@@ -82,10 +87,12 @@ image      = <file>`}</code></pre>
           <div className="endpoint-header">
             <span className="method get">GET</span><code>/api/messages/poll</code>
           </div>
-          <p>Fetch and claim all pending messages for this printer. Used by the Windows print client. Marks claimed messages as <code>printing</code>.</p>
-          <div className="endpoint-auth">🔑 Requires <code>X-API-Key</code> header.</div>
+          <p>Fetch and claim all pending messages for this printer. Used by the print client. Marks claimed messages as <code>printing</code>.</p>
+          <div className="endpoint-auth">🔑 Requires <code>X-API-Key</code> header. Optional <code>X-Client-Version</code> header.</div>
           <pre><code>{`{
   "printer_id": "uuid",
+  "print_width_dots": 384,
+  "emoji_mode": "glyph",               // glyph | text
   "messages": [
     {
       "id":           "uuid",
@@ -94,6 +101,8 @@ image      = <file>`}</code></pre>
       "sender_name":  "Jane",
       "word_wrap":    1,
       "font_size":    9,
+      "align":        null,             // null | center | right
+      "kind":         null,             // null | test_page
       "source":       "web",            // web | api | email
       "created_at":   "2026-05-06T12:00:00"
     }
@@ -121,8 +130,7 @@ image      = <file>`}</code></pre>
   "name":        "Front Desk",
   "description": "58mm thermal",   // optional
   "location":    "Lobby",          // optional
-  "font_size":   9,                // default print font size
-  "columns":     24                // characters per line at chosen font size
+  "print_width_dots": 384          // optional: 384 / 512 / 576
 }
 
 // Response:

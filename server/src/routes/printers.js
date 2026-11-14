@@ -1,10 +1,11 @@
 const express = require("express");
 const { v4: uuidv4 } = require("uuid");
 const db = require("../db");
+const { DEFAULT_WIDTH_DOTS, normalizeWidthDots } = require("../lib/printerWidth");
 
 const router = express.Router();
 
-// GET /api/printers — public list including columns + font_size for the web UI
+// GET /api/printers — public list including print_width_dots for the web UI
 router.get("/", (_req, res) => {
   return res.json({ printers: db.listPrinters(true) });
 });
@@ -21,14 +22,13 @@ router.get("/stats", (_req, res) => {
 
 // POST /api/printers — register a new printer
 router.post("/", (req, res) => {
-  const { name, description, location, columns, font_size } = req.body;
+  const { name, description, location, print_width_dots } = req.body;
 
   if (!name || !name.trim()) {
     return res.status(400).json({ error: "Printer name is required" });
   }
 
-  const cols = Math.max(10, Math.min(200, parseInt(columns, 10) || 22));
-  const fsize = Math.max(6, Math.min(72, parseInt(font_size, 10) || 9));
+  const widthDots = normalizeWidthDots(print_width_dots) ?? DEFAULT_WIDTH_DOTS;
 
   try {
     const printer = db.createPrinter({
@@ -37,16 +37,13 @@ router.post("/", (req, res) => {
       description: description || null,
       location:    location    || null,
       api_key:     uuidv4(),
-      columns:     cols,
-      font_size:   fsize,
+      print_width_dots: widthDots,
     });
 
-    const full = db.getPrinterById(printer.id);
-    const { api_key, ...safeFields } = full;
     return res.status(201).json({
       success: true,
-      printer: safeFields,
-      api_key,
+      printer: db.printerInfo(printer),
+      api_key: printer.api_key,
       message: "Save your API key – it will not be shown again.",
     });
   } catch (err) {
