@@ -144,6 +144,11 @@ node install-service.js remove
 
 The server listens for inbound SMTP on port **2525**.
 
+> **Security:** the SMTP listener is intentionally unauthenticated and does not
+> use TLS. Keep port 2525 on your trusted network / behind a firewall and do not
+> expose it to the public internet. Use the HTTP API (behind HTTPS) for public
+> integrations.
+
 **Addressing:**
 - `<printer-id>@anything` — matches by exact UUID
 - `<printer-slug>@anything` — matches by name slug (e.g. `office-main` for "Office Main")
@@ -198,6 +203,16 @@ X-API-Key: your-key
 printer_id=uuid&body=Check+this+out&image=@photo.jpg
 ```
 
+### Image by URL / OAuth2
+
+`POST /api/messages` also accepts `image_url` (plus optional `image_headers` for
+a bearer token), or `oauth_token_url` with `oauth_client_id` /
+`oauth_client_secret` to fetch an authenticated image. By default the server
+only fetches public HTTP(S) destinations; localhost, private, link-local, and
+cloud-metadata addresses are rejected to prevent SSRF. If you intentionally
+integrate with an internal service, set `ALLOW_PRIVATE_NETWORK_FETCH=1` on the
+server.
+
 ### Twilio SMS webhook example
 Point your Twilio SMS webhook to a small adapter that forwards to PrintBridge:
 
@@ -221,15 +236,20 @@ app.post("/sms", (req, res) => {
 
 ## Rate Limits
 
-| Scope            | Limit                  |
-|------------------|------------------------|
-| All API routes   | 10 requests / 60 sec   |
-| Message posting  | 3 messages / 60 sec    |
+| Scope                | Limit                                                   |
+|----------------------|---------------------------------------------------------|
+| All API routes       | 300 requests / 60 sec per IP (valid API keys exempt)    |
+| Message posting      | 10 / 60 sec per IP; 120 / 60 sec with a valid API key; then a 10-minute cool-off |
+| Admin login          | 10 failed attempts / 15 min per IP                      |
+| Printer registration | 5 registrations / hour per IP                           |
 
 Limits are per IP. Adjust via environment variables:
 ```
 RATE_LIMIT_WINDOW_MS=60000
-RATE_LIMIT_MAX=10
+API_RATE_LIMIT_MAX=300
+AUTOMATION_MESSAGE_RATE_MAX=120
+ADMIN_LOGIN_RATE_LIMIT_MAX=10
+REGISTRATION_RATE_LIMIT_MAX=5
 ```
 
 ---
@@ -245,9 +265,13 @@ RATE_LIMIT_MAX=10
 | `DATA_DIR`            | `/app/data`             | Persistent data directory                          |
 | `UPLOAD_DIR`          | `DATA_DIR/uploads`      | Image upload directory                             |
 | `RATE_LIMIT_WINDOW_MS`| `60000`                 | Rate limit window (ms)                             |
-| `RATE_LIMIT_MAX`      | `10`                    | Max requests per window                            |
+| `API_RATE_LIMIT_MAX`  | `300`                   | Max API requests per window per IP                 |
+| `AUTOMATION_MESSAGE_RATE_MAX` | `120`          | Messages per window per IP with a valid API key    |
+| `ADMIN_LOGIN_RATE_LIMIT_MAX` | `10`             | Failed admin logins per 15 min per IP              |
+| `REGISTRATION_RATE_LIMIT_MAX` | `5`              | Printer registrations per hour per IP              |
 | `ADMIN_PASSWORD`      | `changeme`              | Password for `/admin/login`                        |
 | `ADMIN_TOKEN_SECRET`  | *(random)*              | Optional: stable secret so tokens survive restarts |
+| `ALLOW_PRIVATE_NETWORK_FETCH` | —              | Set to `1` to allow URL fetches to private networks (disables the SSRF guard) |
 | `TRUST_PROXY`         | —                       | Set to `1` when behind a reverse proxy             |
 
 Generate a stable `ADMIN_TOKEN_SECRET`:
@@ -323,6 +347,7 @@ receiptprinterclub/
 │   ├── src/
 │   │   ├── index.js                 # Express entry point
 │   │   ├── db/index.js              # SQLite access layer
+│   │   ├── lib/urlSafety.js         # SSRF guard for server-side fetches
 │   │   ├── middleware/
 │   │   │   ├── rateLimiter.js
 │   │   │   └── upload.js

@@ -178,12 +178,6 @@ function getPendingMessages(printer_id) {
   ).all(printer_id);
 }
 
-function getRecentMessages(printer_id, limit = 50) {
-  return getDb().prepare(
-    `SELECT * FROM messages WHERE printer_id = ? ORDER BY created_at DESC LIMIT ?`
-  ).all(printer_id, limit);
-}
-
 function setMessageStatus(id, status, error = null) {
   getDb().prepare(
     `UPDATE messages
@@ -510,7 +504,7 @@ module.exports = {
   listPrinters, getPrinterById, getPrinterByApiKey,
   createPrinter, updatePrinterLastSeen, deactivatePrinter,
   createMessage, getMessageById, getPendingMessages,
-  getRecentMessages, setMessageStatus, getStats,
+  setMessageStatus, getStats,
   updatePrinter, hardDeletePrinter, softDeletePrinter, getAllMessages, getGlobalStats, getPublicStats,
   getSubscriptionsByPrinter, getSubscriptionById, getActiveSubscriptions,
   getPrinterMessages, getPrinterThreads, getThreadMessages, getRecentActivity,

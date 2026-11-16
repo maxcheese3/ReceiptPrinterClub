@@ -4,9 +4,11 @@ const path           = require("path");
 const fs             = require("fs");
 const https          = require("https");
 const http           = require("http");
+const { urlToHttpOptions } = require("url");
 const db             = require("../db");
 const upload         = require("../middleware/upload");
 const { messageLimiter } = require("../middleware/rateLimiter");
+const { assertSafeUrl, safeLookup } = require("../lib/urlSafety");
 
 const router = express.Router();
 
@@ -18,46 +20,70 @@ const MAX_IMAGE_BYTES    = 50 * 1024 * 1024; // 50 MB — server resizes before 
 // Genesys token endpoint: https://login.mypurecloud.com/oauth/token
 // (region-specific: login.euw2.pure.cloud, login.aps1.pure.cloud, etc.)
 // Returns a Bearer token string.
-function fetchOAuthToken(tokenUrl, clientId, clientSecret) {
+async function fetchOAuthToken(tokenUrl, clientId, clientSecret) {
+  const parsed = await assertSafeUrl(tokenUrl);
+  const body      = "grant_type=client_credentials";
+  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const lib       = parsed.protocol === "https:" ? https : http;
+
   return new Promise((resolve, reject) => {
-    const body      = "grant_type=client_credentials";
-    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-    const parsed    = new URL(tokenUrl);
-    const lib       = parsed.protocol === "https:" ? https : http;
+    let settled = false;
+    const fail = (msg) => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(msg));
+    };
 
     const options = {
-      hostname: parsed.hostname,
-      port:     parsed.port || (parsed.protocol === "https:" ? 443 : 80),
-      path:     parsed.pathname,
-      method:   "POST",
-      timeout:  10000,
+      ...urlToHttpOptions(parsed),
+      method:  "POST",
+      timeout: 10000,
+      // Reject private/reserved addresses at connect time, not just up front.
+      lookup:  safeLookup,
       headers: {
         "Authorization":  `Basic ${basicAuth}`,
         "Content-Type":   "application/x-www-form-urlencoded",
         "Content-Length": Buffer.byteLength(body),
       },
     };
+    // We set Authorization explicitly; don't let URL credentials override it.
+    delete options.auth;
 
     const req = lib.request(options, (res) => {
-      let data = "";
-      res.on("data", (c) => data += c);
+      let data  = "";
+      let bytes = 0;
+      res.on("data", (chunk) => {
+        if (settled) return;
+        bytes += chunk.length;
+        if (bytes > 64 * 1024) {
+          res.destroy();
+          return fail("OAuth token response was too large");
+        }
+        data += chunk;
+      });
       res.on("end", () => {
+        if (settled) return;
         if (res.statusCode !== 200) {
-          return reject(new Error(`OAuth token request failed with HTTP ${res.statusCode}: ${data}`));
+          // Log the body for server-side diagnosis, but never echo an internal
+          // response back to the caller.
+          console.error(`[oauth] Token request failed HTTP ${res.statusCode}: ${data.slice(0, 500)}`);
+          return fail(`OAuth token request failed with HTTP ${res.statusCode}`);
         }
         try {
           const json = JSON.parse(data);
-          if (!json.access_token) return reject(new Error("OAuth response had no access_token"));
+          if (!json.access_token) return fail("OAuth response had no access_token");
           console.log(`[oauth] Token obtained successfully (expires in ${json.expires_in}s)`);
+          settled = true;
           resolve(json.access_token);
         } catch {
-          reject(new Error("OAuth response was not valid JSON"));
+          fail("OAuth response was not valid JSON");
         }
       });
+      res.on("error", (err) => fail("OAuth response error: " + err.message));
     });
 
-    req.on("timeout", () => { req.destroy(); reject(new Error("OAuth token request timed out")); });
-    req.on("error",   (err) => reject(new Error("OAuth request error: " + err.message)));
+    req.on("timeout", () => { req.destroy(); fail("OAuth token request timed out"); });
+    req.on("error",   (err) => fail("OAuth request error: " + err.message));
     req.write(body);
     req.end();
   });
@@ -85,14 +111,24 @@ function fetchImageFromUrl(imageUrl, extraHeaders = {}) {
     let totalBytes = 0;
     let settled    = false;
 
-    function doRequest(url, redirectCount, headersForThisRequest) {
+    async function doRequest(url, redirectCount, headersForThisRequest) {
       if (redirectCount > 5) return reject(new Error("Too many redirects"));
 
-      const reqParsed = new URL(url);
-      const lib       = reqParsed.protocol === "https:" ? https : http;
+      let checked;
+      try {
+        checked = await assertSafeUrl(url);
+      } catch (err) {
+        return reject(new Error(err.message));
+      }
+      if (settled) return;
 
-      const req = lib.get(url, {
+      const lib = checked.protocol === "https:" ? https : http;
+
+      let followingRedirect = false;
+
+      const req = lib.get(checked.href, {
         timeout: 20000,
+        lookup:  safeLookup,
         headers: {
           "User-Agent": "PrintBridge/1.0",
           "Accept":     "image/*,*/*",
@@ -101,12 +137,21 @@ function fetchImageFromUrl(imageUrl, extraHeaders = {}) {
       }, (res) => {
         console.log(`[image_url] HTTP ${res.statusCode} content-type: ${res.headers["content-type"]} location: ${res.headers["location"] || "-"}`);
 
-        // Follow redirects — strip auth on cross-origin redirects (e.g. S3)
+        // Follow redirects — strip auth on cross-origin redirects (e.g. S3).
+        // doRequest() re-validates the new URL before connecting.
         if ([301,302,303,307,308].includes(res.statusCode) && res.headers.location) {
+          followingRedirect = true;
           res.resume();
-          const redirectUrl  = new URL(res.headers.location, url).href;
-          const sameHost     = new URL(redirectUrl).hostname === new URL(url).hostname;
-          return doRequest(redirectUrl, redirectCount + 1, sameHost ? headersForThisRequest : {});
+          let redirectUrl;
+          try {
+            redirectUrl = new URL(res.headers.location, url).href;
+          } catch {
+            return reject(new Error("image_url returned an invalid redirect"));
+          }
+          const sameHost = new URL(redirectUrl).hostname === new URL(url).hostname;
+          doRequest(redirectUrl, redirectCount + 1, sameHost ? headersForThisRequest : {})
+            .catch((err) => reject(err));
+          return;
         }
 
         if (res.statusCode !== 200) {
@@ -139,7 +184,7 @@ function fetchImageFromUrl(imageUrl, extraHeaders = {}) {
             settled = true;
             res.destroy(); file.destroy();
             fs.unlink(destPath, () => {});
-            reject(new Error("image_url exceeds 10 MB limit"));
+            reject(new Error("image_url exceeds 50 MB limit"));
           }
         });
 
@@ -151,7 +196,13 @@ function fetchImageFromUrl(imageUrl, extraHeaders = {}) {
           file.close(async () => {
             console.log(`[image_url] Saved ${totalBytes} bytes as ${filename}`);
             // Resize to printer-friendly width before the client downloads it.
-            await upload.resizeIfNeeded(destPath);
+            // A failed resize means the URL did not return a decodable image;
+            // remove it rather than leave arbitrary fetched bytes in /uploads.
+            const ok = await upload.resizeIfNeeded(destPath);
+            if (!ok) {
+              fs.unlink(destPath, () => {});
+              return reject(new Error("image_url did not return a valid image"));
+            }
             resolve(filename);
           });
         });
@@ -169,11 +220,19 @@ function fetchImageFromUrl(imageUrl, extraHeaders = {}) {
         });
       });
 
-      req.on("timeout", () => { req.destroy(); reject(new Error("Timed out fetching image_url")); });
-      req.on("error",   (err) => { if (!settled) { settled = true; reject(new Error("Request error: " + err.message)); } });
+      req.on("timeout", () => {
+        req.destroy();
+        if (!followingRedirect) reject(new Error("Timed out fetching image_url"));
+      });
+      req.on("error",   (err) => {
+        if (!settled && !followingRedirect) {
+          settled = true;
+          reject(new Error("Request error: " + err.message));
+        }
+      });
     }
 
-    doRequest(imageUrl, 0, extraHeaders);
+    doRequest(imageUrl, 0, extraHeaders).catch((err) => reject(err));
   });
 }
 
@@ -266,10 +325,10 @@ router.post(
         if (anonymous) {
           sender_name = "Anonymous";
         } else {
-          const forwarded = req.headers["x-forwarded-for"];
-          sender_name = forwarded
-            ? forwarded.split(",")[0].trim()
-            : (req.ip || req.socket.remoteAddress || "Unknown");
+          // Use req.ip (which honours TRUST_PROXY) rather than reading
+          // X-Forwarded-For directly, so a spoofed header cannot choose the
+          // "From:" value shown to the recipient and printed on the receipt.
+          sender_name = req.ip || req.socket.remoteAddress || "Unknown";
         }
       }
 
@@ -358,10 +417,11 @@ router.post(
       }
       return res.status(500).json({
         error: "Internal server error",
-        // Surfaced so the cause is visible in the browser too, not just the
-        // server console. Safe: this endpoint is not authenticated-admin-only,
-        // but the message is an exception string, not user data.
-        detail: err && err.message ? err.message : String(err),
+        // Only expose the exception string outside production; it can contain
+        // filesystem paths, dependency details, or SQL diagnostics.
+        ...(process.env.NODE_ENV !== "production"
+          ? { detail: err && err.message ? err.message : String(err) }
+          : {}),
       });
     }
   }
@@ -401,14 +461,6 @@ router.patch("/:id", (req, res) => {
 
   db.setMessageStatus(msg.id, status, error || null);
   return res.json({ success: true });
-});
-
-// ── GET /api/messages/:printer_id/recent ─────────────────────────────────────
-router.get("/:printer_id/recent", (req, res) => {
-  const printer = db.getPrinterById(req.params.printer_id);
-  if (!printer || !printer.active || printer.deleted_at) return res.status(404).json({ error: "Printer not found" });
-  const messages = db.getRecentMessages(printer.id, 50);
-  return res.json({ messages });
 });
 
 module.exports = router;

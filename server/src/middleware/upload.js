@@ -31,7 +31,7 @@ async function resizeIfNeeded(filePath) {
     const needsResize  = (meta.width || 0) > MAX_IMAGE_WIDTH;
     const needsConvert = !JIMP_SUPPORTED_FORMATS.has(format);
 
-    if (!needsResize && !needsConvert) return; // already fine
+    if (!needsResize && !needsConvert) return true; // already fine
 
     let pipeline = sharp(filePath);
     if (needsResize)  pipeline = pipeline.resize({ width: MAX_IMAGE_WIDTH, withoutEnlargement: true });
@@ -46,8 +46,10 @@ async function resizeIfNeeded(filePath) {
       needsConvert && `converted ${format} → jpeg`,
     ].filter(Boolean);
     console.log(`[upload] ${ops.join(", ")}: ${path.basename(filePath)}`);
+    return true;
   } catch (err) {
     console.warn(`[upload] Could not process ${path.basename(filePath)}: ${err.message}`);
+    return false;
   }
 }
 
@@ -89,7 +91,11 @@ function single(fieldName) {
       try {
         // Write the raw buffer, then resize in-place if too wide.
         fs.writeFileSync(destPath, req.file.buffer);
-        await resizeIfNeeded(destPath);
+        const ok = await resizeIfNeeded(destPath);
+        if (!ok) {
+          fs.unlink(destPath, () => {});
+          return res.status(400).json({ error: "Uploaded file is not a valid image" });
+        }
         // Mimic multer diskStorage's req.file.filename so the rest of the
         // route code works without changes.
         req.file.filename = filename;

@@ -67,6 +67,8 @@ Content-Type: application/json
   "image_headers": { "Authorization": "Bearer your-token" }
 }`}</code></pre>
 
+          <p><strong>Note:</strong> URLs are fetched server-side and must be public HTTP(S). Localhost, private, link-local, and cloud-metadata addresses are blocked. Set <code>ALLOW_PRIVATE_NETWORK_FETCH=1</code> on the server if you intentionally fetch from a private network.</p>
+
           <p><strong>Image upload (multipart/form-data)</strong></p>
           <pre><code>{`POST /api/messages
 Content-Type: multipart/form-data
