@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { usePrinterAuth } from '../contexts/PrinterAuthContext';
 import PrinterPageLayout from '../components/PrinterPageLayout';
 import type { Printer } from '../types/api';
+import { WIDTH_PRESETS, SIZE_STEPS, colsFor, dotsForCols, normalCols } from '../lib/printerGeometry';
 
 export default function PrinterSettings() {
   const { apiKey, printer, authFetch, refreshPrinter, logout } = usePrinterAuth();
@@ -11,7 +12,11 @@ export default function PrinterSettings() {
   const [paName, setPaName] = useState('');
   const [paDesc, setPaDesc] = useState('');
   const [paLocation, setPaLocation] = useState('');
-  const [paColumns, setPaColumns] = useState(24);
+  // Printer width, as Normal-size characters per line (what the test page ruler shows).
+  const [paCols, setPaCols] = useState(WIDTH_PRESETS[0].cols);
+  // "Other" is selected when the saved width isn't one of the common ones.
+  const [paOtherCols, setPaOtherCols] = useState(false);
+  const [paEmojiMode, setPaEmojiMode] = useState<'glyph' | 'text'>('glyph');
   const [settingsFeedback, setSettingsFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -23,12 +28,18 @@ export default function PrinterSettings() {
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
   const [deleteAck, setDeleteAck] = useState(false);
 
+  const [testPageBusy, setTestPageBusy] = useState(false);
+  const [testPageFeedback, setTestPageFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+
   useEffect(() => {
     if (!printer) return;
     setPaName(printer.name);
     setPaDesc(printer.description ?? '');
     setPaLocation(printer.location ?? '');
-    setPaColumns(printer.columns);
+    const preset = WIDTH_PRESETS.find((p) => p.dots === printer.print_width_dots);
+    setPaCols(preset ? preset.cols : normalCols(printer.print_width_dots));
+    setPaOtherCols(!preset);
+    setPaEmojiMode(printer.emoji_mode === 'text' ? 'text' : 'glyph');
   }, [printer]);
 
   async function patchPrinter(body: Record<string, unknown>, successMsg: string) {
@@ -102,7 +113,8 @@ export default function PrinterSettings() {
           name: paName.trim(),
           description: paDesc.trim(),
           location: paLocation.trim(),
-          columns: paColumns,
+          print_width_dots: dotsForCols(paCols),
+          emoji_mode: paEmojiMode,
         }),
       });
       const data = await res.json() as { success: boolean; printer?: Printer; error?: string };
@@ -116,6 +128,24 @@ export default function PrinterSettings() {
       setSettingsFeedback({ type: 'error', msg: (err as Error).message });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleTestPage() {
+    setTestPageFeedback(null);
+    setTestPageBusy(true);
+    try {
+      const res = await authFetch('/api/printer-admin/test-page', { method: 'POST' });
+      const data = await res.json() as { success?: boolean; error?: string };
+      if (res.ok && data.success) {
+        setTestPageFeedback({ type: 'success', msg: 'Test page queued — it prints the next time your printer checks in.' });
+      } else {
+        setTestPageFeedback({ type: 'error', msg: data.error ?? 'Could not queue a test page.' });
+      }
+    } catch (err) {
+      setTestPageFeedback({ type: 'error', msg: (err as Error).message });
+    } finally {
+      setTestPageBusy(false);
     }
   }
 
@@ -143,19 +173,70 @@ export default function PrinterSettings() {
             <input type="text" id="pa-location" maxLength={100} value={paLocation} onChange={(e) => setPaLocation(e.target.value)} />
           </div>
           <div className="field" style={{ marginBottom: 0 }}>
-            <label htmlFor="pa-columns">
-              <span className="label-text">Columns *</span>
-              <span className="label-hint"> chars per line — 24 for 58mm, 36 for 80mm</span>
-            </label>
-            <input
-              type="number"
-              id="pa-columns"
-              min={10}
-              max={200}
-              style={{ maxWidth: 100 }}
-              value={paColumns}
-              onChange={(e) => setPaColumns(Number(e.target.value))}
-            />
+            <label><span className="label-text">Characters per line</span></label>
+            <div className="paper-width-options">
+              {WIDTH_PRESETS.map((preset) => (
+                <label key={preset.cols} className="paper-width-option">
+                  <input
+                    type="radio"
+                    name="pa-width"
+                    checked={!paOtherCols && paCols === preset.cols}
+                    onChange={() => { setPaOtherCols(false); setPaCols(preset.cols); }}
+                  />
+                  <span className="paper-width-label">
+                    <strong>{preset.cols}</strong>
+                    <span className="paper-width-hint">{preset.hint}</span>
+                  </span>
+                </label>
+              ))}
+              <label className="paper-width-option">
+                <input
+                  type="radio"
+                  name="pa-width"
+                  checked={paOtherCols}
+                  onChange={() => setPaOtherCols(true)}
+                />
+                <span className="paper-width-label">
+                  <strong>Other</strong>
+                  <span className="paper-width-hint">
+                    {paOtherCols ? (
+                      <input
+                        type="number"
+                        aria-label="Characters per line"
+                        min={11}
+                        max={85}
+                        style={{ width: 70 }}
+                        value={paCols}
+                        onChange={(e) => setPaCols(Number(e.target.value))}
+                      />
+                    ) : 'If your test page shows a different number'}
+                  </span>
+                </span>
+              </label>
+            </div>
+            <span className="label-hint">
+              Not sure? Print a test page below and use the last number on the first ruler line.
+              {' '}At each size: {SIZE_STEPS.map((s) => `${s.name} ${colsFor(dotsForCols(paCols), s.pt)}`).join(' · ')}
+            </span>
+          </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label><span className="label-text">Emoji</span></label>
+            <div className="paper-width-options">
+              <label className="paper-width-option">
+                <input type="radio" name="pa-emoji" checked={paEmojiMode === 'glyph'} onChange={() => setPaEmojiMode('glyph')} />
+                <span className="paper-width-label">
+                  <strong>Pictures</strong>
+                  <span className="paper-width-hint">Small black-and-white emoji, if your printer supports custom characters</span>
+                </span>
+              </label>
+              <label className="paper-width-option">
+                <input type="radio" name="pa-emoji" checked={paEmojiMode === 'text'} onChange={() => setPaEmojiMode('text')} />
+                <span className="paper-width-label">
+                  <strong>Text</strong>
+                  <span className="paper-width-hint">Stand-ins like &lt;3 and :D — works on every printer</span>
+                </span>
+              </label>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16 }}>
             <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
@@ -170,11 +251,53 @@ export default function PrinterSettings() {
         </form>
       </div>
 
+      {/* ── Test page ──────────────────────────────────────────────────────── */}
+      <div className="admin-section">
+        <div className="admin-section-header"><h2>Test Page</h2></div>
+        <div className="mgmt-list">
+          <div className="mgmt-row">
+            <div className="mgmt-row-text">
+              <div className="mgmt-row-title">Check your printer</div>
+              <div className="mgmt-row-desc">
+                Prints rulers to confirm the paper width, a sample of every size and
+                style, and an emoji row so you can choose Pictures or Text above.
+                Save any changes first.
+              </div>
+            </div>
+            <button type="button" className="btn btn-sm btn-outline" onClick={handleTestPage} disabled={testPageBusy}>
+              {testPageBusy ? 'Queuing…' : 'Print test page'}
+            </button>
+          </div>
+          {testPageFeedback && (
+            <div className={`feedback ${testPageFeedback.type}`} style={{ margin: '4px 0 0', padding: '6px 10px', fontSize: 12 }}>
+              {testPageFeedback.msg}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* ── Printer Management ─────────────────────────────────────────────── */}
       <div className="admin-section">
         <div className="admin-section-header"><h2>Printer Management</h2></div>
 
         <div className="mgmt-list">
+          {/* Print client version, from its last poll */}
+          <div className="mgmt-row">
+            <div className="mgmt-row-text">
+              <div className="mgmt-row-title">
+                Print client:{' '}
+                {!printer?.last_seen ? 'not connected yet' : printer.client_version ?? 'old version'}
+              </div>
+              <div className="mgmt-row-desc">
+                {!printer?.last_seen
+                  ? 'Start the print client on the computer connected to your printer.'
+                  : printer.client_version
+                    ? 'The version running on the computer connected to your printer.'
+                    : 'Update the print client for formatting, alignment, emoji pictures and the test page.'}
+              </div>
+            </div>
+          </div>
+
           {/* Hide */}
           <div className="mgmt-row">
             <div className="mgmt-row-text">

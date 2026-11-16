@@ -1,29 +1,16 @@
-require("dotenv").config();
+const path = require("path");
+// .env next to this file is the client's only config — including when run as a
+// service, whose working directory may be somewhere else.
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 
-const axios     = require("axios");
-const fs        = require("fs");
-const path      = require("path");
-const os        = require("os");
-const { spawn } = require("child_process");
-const Jimp      = require("jimp");
+const axios = require("axios");
+const fs    = require("fs");
+const os    = require("os");
 
-// ── OS detection ──────────────────────────────────────────────────────────────
-const IS_WINDOWS = process.platform === "win32";
-const IS_MAC     = process.platform === "darwin";
-const IS_LINUX   = process.platform === "linux";
-const IS_UNIX    = IS_LINUX || IS_MAC; // macOS and Linux share the same print module
-
-// Load Unix print module on Linux/macOS (canvas may not be installed on Windows)
-let linuxPrint = null;
-if (IS_UNIX) {
-  try {
-    linuxPrint = require("./print-linux");
-  } catch (err) {
-    console.error("[FATAL] Unix print module failed to load:", err.message);
-    console.error("Run: npm install canvas");
-    process.exit(1);
-  }
-}
+const layout = require("./layout");
+const escpos = require("./escpos");
+const output = require("./output");
+const { version: CLIENT_VERSION } = require("./package.json");
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const SERVER_URL      = (process.env.SERVER_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -31,27 +18,21 @@ const API_KEY         = process.env.API_KEY;
 const POLL_MS         = parseInt(process.env.POLL_INTERVAL_MS  || "5000", 10);
 const TEMP_DIR        = process.env.TEMP_DIR || path.join(os.tmpdir(), "printbridge");
 const LOG_LEVEL       = process.env.LOG_LEVEL || "info";
-const PRINTER_NAME    = process.env.PRINTER_NAME   || "";
-const PRINT_COLUMNS   = parseInt(process.env.PRINT_COLUMNS    || "24", 10);
-
-const PRINT_FONT_SIZE = parseInt(process.env.PRINT_FONT_SIZE  || "9",  10);
-
-// Column count for a given font size, scaled from THIS printer's real width.
-// PRINT_COLUMNS is how many baseline-font (PRINT_FONT_SIZE) characters fit across
-// the paper, so the wrap width for any other font size scales inversely with size:
-//   wrapCols = PRINT_COLUMNS * (PRINT_FONT_SIZE / pt)
-// At the baseline font this returns exactly PRINT_COLUMNS; a smaller font yields
-// more columns and a larger font fewer. This respects the printer's actual paper
-// width (e.g. 36 for 80mm) instead of assuming a fixed 58mm/24-col printer.
-function colsForFontSize(pt) {
-  const size = pt || PRINT_FONT_SIZE;
-  return Math.max(1, Math.round(PRINT_COLUMNS * PRINT_FONT_SIZE / size));
-}
-
-const PS_TEXT   = path.join(__dirname, "print-text.ps1");
 const ARCHIVE_ENABLED = process.env.ARCHIVE_ENABLED !== "false";
 const ARCHIVE_DIR     = process.env.ARCHIVE_DIR || path.join(__dirname, "archive");
-const PS_IMAGE = path.join(__dirname, "print-image.ps1");
+const BRIGHTNESS      = parseInt(process.env.PRINT_BRIGHTNESS || "40", 10);
+const CHUNK_ROWS      = parseInt(process.env.PRINT_RASTER_CHUNK_ROWS || "256", 10);
+
+// Settings that no longer do anything, and what replaced them.
+// LEGACY(old-client): helps people upgrading from a pre-4.0 .env — remove once
+// every printer reports a new client.
+const RETIRED_VARS = {
+  PRINT_COLUMNS:   "characters per line is set on the My Printer page",
+  PRINT_WIDTH_MM:  "characters per line is set on the My Printer page",
+  PRINT_DPI:       "characters per line is set on the My Printer page",
+  PRINT_FONT_SIZE: "each sender picks a size",
+  PRINT_CUPS_MODE: "use PRINT_MODE=driver for printers that ignore ESC/POS",
+};
 
 if (!API_KEY) { console.error("[FATAL] API_KEY not set in .env"); process.exit(1); }
 fs.mkdirSync(TEMP_DIR, { recursive: true });
@@ -67,15 +48,44 @@ const log = {
 };
 function ts() { return new Date().toISOString().replace("T", " ").slice(0, 19); }
 
+// ── Printer settings ──────────────────────────────────────────────────────────
+// Printer width and emoji mode are set on the My Printer page and arrive with
+// every poll, so changes apply without restarting the client.
+const printer = { widthDots: layout.DEFAULT_WIDTH_DOTS, emojiMode: "glyph" };
+let warnedOldServer = false;
+let lastSettings = "";
+
+function applySettings(data) {
+  // LEGACY(old-client): only reachable while a server from before 4.0 is still
+  // running — remove once every printer reports a new client (keep the default).
+  if (!data.print_width_dots) {
+    if (!warnedOldServer) {
+      log.warn(`Server didn't send a printer width (older server?) — using ${printer.widthDots} dots (32 characters per line).`);
+      warnedOldServer = true;
+    }
+    return;
+  }
+  printer.widthDots = data.print_width_dots;
+  printer.emojiMode = data.emoji_mode === "text" ? "text" : "glyph";
+  const cols = layout.colsFor(printer.widthDots, layout.SIZES[1]);
+  const summary = `${cols} characters per line (${printer.widthDots} dots), emoji: ${printer.emojiMode === "text" ? "text" : "pictures"}`;
+  if (summary !== lastSettings) log.info(`[settings] ${summary}`);
+  lastSettings = summary;
+}
+
 // ── HTTP ──────────────────────────────────────────────────────────────────────
 const http = axios.create({
   baseURL: SERVER_URL,
-  headers: { "X-API-Key": API_KEY },
+  // The server shows the client version with the printer's info, so everyone
+  // can see which printers still run an old client.
+  headers: { "X-API-Key": API_KEY, "X-Client-Version": CLIENT_VERSION },
   timeout: 10_000,
 });
 
 async function pollMessages() {
-  return (await http.get("/api/messages/poll")).data.messages || [];
+  const { data } = await http.get("/api/messages/poll");
+  applySettings(data);
+  return data.messages || [];
 }
 async function reportStatus(id, status, error = null) {
   await http.patch(`/api/messages/${id}`, { status, error });
@@ -88,30 +98,6 @@ async function downloadBuffer(filename) {
   });
   return Buffer.from(res.data);
 }
-
-// ── PowerShell runner ─────────────────────────────────────────────────────────
-function runPowerShell(scriptPath, args = [], stdinText = null) {
-  return new Promise((resolve, reject) => {
-    const ps = spawn("powershell.exe", [
-      "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-      "-File", scriptPath, ...args,
-    ], { stdio: ["pipe", "pipe", "pipe"] });
-
-    ps.stdin.setDefaultEncoding("utf8");
-    let stderr = "";
-    ps.stderr.on("data", (d) => { stderr += d.toString("utf8"); });
-    ps.stdout.on("data", (d) => { log.debug("[PS]", d.toString("utf8").trim()); });
-    ps.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr.trim() || `PS exit ${code}`)));
-    ps.on("error", (err) => reject(new Error("PS spawn failed: " + err.message)));
-
-    if (stdinText !== null) {
-      ps.stdin.write("\uFEFF", "utf8"); // UTF-8 BOM so PowerShell reads as UTF-8
-      ps.stdin.write(stdinText, "utf8");
-    }
-    ps.stdin.end();
-  });
-}
-
 
 // ── Local archive ─────────────────────────────────────────────────────────────
 // Saves a copy of every message (text + image) to the local filesystem.
@@ -154,169 +140,18 @@ async function archiveMessage(message, imageBuffer = null) {
   }
 }
 
-// ── Text helpers ──────────────────────────────────────────────────────────────
-// Word-wraps preserving leading whitespace (for ASCII art indentation).
-// Lines that start with spaces are wrapped at maxCols but the leading
-// spaces of the first fragment are kept on each continuation too.
-function wordWrap(text, maxCols) {
-  const out = [];
-  for (const para of text.split("\n")) {
-    // Blank line — preserve as empty line
-    if (para.trim() === "") { out.push(""); continue; }
-
-    // Preserve leading whitespace (indentation / ASCII art)
-    const leadMatch = para.match(/^(\s*)/);
-    const lead = leadMatch ? leadMatch[1] : "";
-    const rest = para.slice(lead.length);
-
-    const words = rest.split(" ");
-    let line = lead;
-    for (const word of words) {
-      const candidate = line === lead ? lead + word : line + " " + word;
-      if ([...candidate].length > maxCols && line !== lead) {
-        out.push(line);
-        line = lead + word;
-      } else {
-        line = candidate;
-      }
-    }
-    if (line !== lead || lead) out.push(line);
-  }
-  return out;
+// ── Printing ──────────────────────────────────────────────────────────────────
+// Driver mode on macOS/Linux sends plain text, which can't carry custom
+// characters, so emoji always print as stand-ins there.
+function emojiMode() {
+  return output.config().mode === "driver" && !output.IS_WINDOWS ? "text" : printer.emojiMode;
 }
 
-function buildHeader(message) {
-  const SEP  = "=".repeat(PRINT_COLUMNS);
-  const lines = [SEP];
-  if (message.sender_name)  lines.push("From: " + message.sender_name);
-  if (message.sender_email) lines.push("Email:    " + message.sender_email);
-  lines.push("Time: " + new Date(message.created_at + "Z").toLocaleString());
-  lines.push(SEP);
-  return lines;
-}
-
-function buildTextPayload(message, doWordWrap) {
-  const lines = buildHeader(message);
-  if (message.body && message.body.trim()) {
-    if (doWordWrap) {
-      // Use the font size stored with this message to get the correct column count.
-      // Falls back to PRINT_COLUMNS env var if no font size is stored.
-      const wrapCols = message.font_size
-        ? colsForFontSize(message.font_size)
-        : PRINT_COLUMNS;
-      lines.push(...wordWrap(message.body, wrapCols));
-    } else {
-      // No wrap — pass through as-is (user laid it out themselves)
-      lines.push(...message.body.split("\n"));
-    }
-  }
-  lines.push("=".repeat(PRINT_COLUMNS));
-  return lines.join("\r\n");
-}
-
-// Minimal header for image-only jobs (sender name + date, no separators)
-function buildImageHeader(message) {
-  const lines = [];
-  if (message.sender_name) {
-    lines.push("From: " + message.sender_name);
-  }
-  lines.push("Time: " + new Date(message.created_at + "Z").toLocaleString());
-  // lines.push("-".repeat(PRINT_COLUMNS));
-  return lines.join("\r\n");
-}
-
-// ── Floyd-Steinberg dithering ─────────────────────────────────────────────────
-// Converts image to grayscale then dithers to 1-bit-equivalent black/white pixels.
-// Returns a Jimp image with only pure black (0x000000ff) and white (0xffffffff) pixels.
-// Used by both Windows and Linux paths for consistent output quality.
-async function ditherImage(imageBuffer, printWidthPx) {
-  const img = await Jimp.read(imageBuffer);
-
-  // Scale to printer width maintaining aspect ratio
-  img.resize(printWidthPx, Jimp.AUTO);
-  img.greyscale();
-
-  const w = img.getWidth();
-  const h = img.getHeight();
-
-  // Copy luma values into a float buffer for error diffusion
-  const gray = new Float32Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const c = Jimp.intToRGBA(img.getPixelColor(x, y));
-      gray[y * w + x] = c.r; // already greyscale so r=g=b
-    }
-  }
-
-  // Floyd-Steinberg error diffusion
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const idx = y * w + x;
-      const old = gray[idx];
-      const nw  = old < 128 ? 0 : 255;
-      gray[idx] = nw;
-      const err = old - nw;
-      if (x + 1 < w)              gray[idx + 1]         += err * 7 / 16;
-      if (y + 1 < h && x > 0)     gray[idx + w - 1]     += err * 3 / 16;
-      if (y + 1 < h)              gray[idx + w]          += err * 5 / 16;
-      if (y + 1 < h && x + 1 < w) gray[idx + w + 1]     += err * 1 / 16;
-    }
-  }
-
-  // Write dithered values back into the Jimp image
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const v = gray[y * w + x] < 128 ? 0 : 255;
-      img.setPixelColor(Jimp.rgbaToInt(v, v, v, 255), x, y);
-    }
-  }
-
-  return img;
-}
-
-// ── Print functions — dispatch to Windows (GDI/PowerShell) or Linux (CUPS) ────
-async function printText(message, doWordWrap) {
-  const payload  = buildTextPayload(message, doWordWrap);
-  const fontSize = message.font_size || PRINT_FONT_SIZE;
-
-  if (IS_WINDOWS) {
-    const args = ["-FontSize", String(fontSize)];
-    if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
-    await runPowerShell(PS_TEXT, args, payload);
-  } else {
-    await linuxPrint.printText(payload, fontSize, TEMP_DIR);
-  }
-}
-
-async function printImageHeader(message) {
-  if (!message.sender_name && !message.created_at) return;
-  const payload  = buildImageHeader(message);
-  const fontSize = message.font_size || PRINT_FONT_SIZE;
-
-  if (IS_WINDOWS) {
-    const args = ["-FontSize", String(fontSize)];
-    if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
-    await runPowerShell(PS_TEXT, args, payload);
-  } else {
-    await linuxPrint.printText(payload, fontSize, TEMP_DIR);
-  }
-}
-
-async function printImage(imageBuffer) {
-  if (IS_WINDOWS) {
-    const img     = await Jimp.read(imageBuffer);
-    const tmpFile = path.join(TEMP_DIR, `img-${Date.now()}.bmp`);
-    await img.writeAsync(tmpFile);
-    try {
-      const args = ["-ImagePath", tmpFile];
-      if (PRINTER_NAME) args.push("-PrinterName", PRINTER_NAME);
-      await runPowerShell(PS_IMAGE, args);
-    } finally {
-      try { fs.unlinkSync(tmpFile); } catch {}
-    }
-  } else {
-    await linuxPrint.printImage(imageBuffer, TEMP_DIR);
-  }
+async function printModel(model) {
+  const opts = { widthDots: printer.widthDots, tempDir: TEMP_DIR };
+  if (output.config().mode === "driver") return output.printViaDriver(model, opts);
+  const job = await escpos.build(model, { widthDots: printer.widthDots, brightness: BRIGHTNESS, chunkRows: CHUNK_ROWS });
+  await output.sendRaw(job, opts);
 }
 
 // ── Process one message ───────────────────────────────────────────────────────
@@ -324,29 +159,22 @@ async function processMessage(message) {
   log.info(`Processing message ${message.id} (source: ${message.source})`);
 
   // API/email always word-wrap. Web submissions send explicit word_wrap flag.
-  const isApi      = message.source === "api" || message.source === "email";
-  const doWordWrap = isApi || message.word_wrap !== 0;
+  const isApi = message.source === "api" || message.source === "email";
+  const wrap  = isApi || message.word_wrap !== 0;
 
   try {
-    if (message.body && message.body.trim()) {
-      await printText(message, doWordWrap);
-      log.info("  ✓ Text printed");
-    }
+    let imageBuffer = null;
+    if (message.image_path) imageBuffer = await downloadBuffer(message.image_path);
+    // Archive before printing so we have a copy even if print fails
+    await archiveMessage(message, imageBuffer);
 
-    let imageBuf = null;
-    if (message.image_path) {
-      imageBuf = await downloadBuffer(message.image_path);
-      // Archive before printing so we have a copy even if print fails
-      await archiveMessage(message, imageBuf);
-      await printImageHeader(message);
-      await printImage(imageBuf);
-      log.info("  ✓ Image printed");
-    } else {
-      await archiveMessage(message, null);
-    }
+    const model = message.kind === "test_page"
+      ? layout.buildTestPage({ widthDots: printer.widthDots })
+      : layout.buildReceipt(message, { widthDots: printer.widthDots, emojiMode: emojiMode(), wrap, imageBuffer });
+    await printModel(model);
 
     await reportStatus(message.id, "printed");
-    log.info(`  ✓ Message ${message.id} complete`);
+    log.info(`  ✓ Message ${message.id} printed`);
   } catch (err) {
     log.error("  ✗ Failed:", err.message);
     await reportStatus(message.id, "failed", err.message).catch(() => {});
@@ -374,16 +202,48 @@ async function poll() {
   }
 }
 
-const platformLabel = IS_WINDOWS ? "Windows (GDI/PowerShell)" : IS_MAC ? "macOS (CUPS/ESC-POS)" : "Linux (CUPS/ESC-POS)";
-log.info("PrintBridge Client starting…");
-log.info(`  Platform:      ${platformLabel}`);
-log.info(`  Server:        ${SERVER_URL}`);
-log.info(`  Poll interval: ${POLL_MS}ms`);
-log.info(`  Printer:       ${PRINTER_NAME || "(Windows default)"}`);
-log.info(`  Columns:       ${PRINT_COLUMNS}  Font: ${PRINT_FONT_SIZE}pt`);
-log.info(`  Archive:       ${ARCHIVE_ENABLED ? ARCHIVE_DIR : "disabled"}`);
+// `node client.js --test-page` prints the calibration page once and exits.
+// Add `--cols 42` to try a width without changing the website setting (or
+// before the server supports it); otherwise the width comes from the server.
+async function printTestPageAndExit() {
+  try {
+    const colsArg = process.argv.indexOf("--cols");
+    const cols = colsArg > 0 ? parseInt(process.argv[colsArg + 1], 10) : NaN;
+    if (colsArg > 0 && !(cols >= 11 && cols <= 85)) {
+      log.error("--cols needs a number of characters per line, e.g. --cols 42");
+      process.exit(1);
+    }
+    if (cols) {
+      printer.widthDots = layout.dotsForCols(cols);
+    } else {
+      const { data } = await http.get("/api/printer-admin/me");
+      applySettings(data.printer || {});
+    }
+    log.info(`Printing test page at ${printer.widthDots} dots to ${output.describe()}…`);
+    await printModel(layout.buildTestPage({ widthDots: printer.widthDots }));
+    log.info("Test page sent.");
+    process.exit(0);
+  } catch (err) {
+    log.error("Test page failed:", err.response ? `server ${err.response.status}` : err.message);
+    process.exit(1);
+  }
+}
 
-poll();
-const interval = setInterval(poll, POLL_MS);
-process.on("SIGINT",  () => { clearInterval(interval); log.info("Shutting down."); process.exit(0); });
-process.on("SIGTERM", () => { clearInterval(interval); log.info("Shutting down."); process.exit(0); });
+log.info(`PrintBridge Client ${CLIENT_VERSION} starting…`);
+log.info(`  Server:        ${SERVER_URL}`);
+log.info(`  Printer:       ${output.describe()}`);
+log.info(`  Timezone:      ${process.env.TZ || "(unset — using system default; in Docker that's UTC)"}`);
+log.info(`  Archive:       ${ARCHIVE_ENABLED ? ARCHIVE_DIR : "disabled"}`);
+for (const [name, replacement] of Object.entries(RETIRED_VARS)) {
+  if (process.env[name] !== undefined) log.warn(`  Ignoring ${name} — ${replacement}.`);
+}
+
+if (process.argv.includes("--test-page")) {
+  printTestPageAndExit();
+} else {
+  log.info(`  Poll interval: ${POLL_MS}ms`);
+  poll();
+  const interval = setInterval(poll, POLL_MS);
+  process.on("SIGINT",  () => { clearInterval(interval); log.info("Shutting down."); process.exit(0); });
+  process.on("SIGTERM", () => { clearInterval(interval); log.info("Shutting down."); process.exit(0); });
+}

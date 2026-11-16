@@ -4,7 +4,8 @@
  * the ability to update their printer settings.
  *
  * GET    /api/printer-admin/me           — printer info
- * PATCH  /api/printer-admin/me           — update name/description/location/columns
+ * PATCH  /api/printer-admin/me           — update name/description/location/printer width/emoji mode
+ * POST   /api/printer-admin/test-page    — queue a calibration test page to this printer
  * GET    /api/printer-admin/messages     — all messages RECEIVED (paginated, optional ?sender filter)
  * GET    /api/printer-admin/threads      — conversations (two-sided with printers, one-sided from guests)
  * GET    /api/printer-admin/thread       — full message list for one conversation, both directions
@@ -14,8 +15,10 @@
 
 "use strict";
 
-const express = require("express");
-const db      = require("../db");
+const express        = require("express");
+const { v4: uuidv4 } = require("uuid");
+const db             = require("../db");
+const { normalizeWidthDots, normalizeEmojiMode } = require("../lib/printerWidth");
 
 const router  = express.Router();
 
@@ -30,15 +33,14 @@ function requireApiKey(req, res, next) {
 
 // ── GET /api/printer-admin/me ─────────────────────────────────────────────────
 router.get("/me", requireApiKey, (req, res) => {
-  const { id, name, description, location, columns, font_size, active, hidden, created_at, last_seen } = req.printer;
-  const stats = db.getStats(id);
-  return res.json({ printer: { id, name, description, location, columns, font_size, active, hidden, created_at, last_seen }, stats });
+  const stats = db.getStats(req.printer.id);
+  return res.json({ printer: db.printerInfo(req.printer), stats });
 });
 
 // ── PATCH /api/printer-admin/me ───────────────────────────────────────────────
 router.patch("/me", requireApiKey, (req, res) => {
   const p = req.printer;
-  const { name, description, location, columns, active, hidden } = req.body;
+  const { name, description, location, print_width_dots, emoji_mode, active, hidden } = req.body;
 
   // Name uniqueness check
   if (name && name.trim() !== p.name) {
@@ -50,15 +52,34 @@ router.patch("/me", requireApiKey, (req, res) => {
     name:        name        !== undefined ? name.trim()                                         : p.name,
     description: description !== undefined ? (description.trim() || null)                        : p.description,
     location:    location    !== undefined ? (location.trim()    || null)                        : p.location,
-    columns:     columns     !== undefined ? Math.max(10, Math.min(200, parseInt(columns, 10)))  : p.columns,
-    font_size:   p.font_size,
+    print_width_dots: normalizeWidthDots(print_width_dots) ?? p.print_width_dots,
+    emoji_mode:       normalizeEmojiMode(emoji_mode)       ?? p.emoji_mode,
     active:      active      !== undefined ? (active ? 1 : 0)                                    : p.active,
     hidden:      hidden      !== undefined ? (hidden ? 1 : 0)                                    : (p.hidden || 0),
   });
 
-  const updated = db.getPrinterById(p.id);
-  const { api_key, ...safe } = updated;
-  return res.json({ success: true, printer: safe });
+  return res.json({ success: true, printer: db.printerInfo(db.getPrinterById(p.id)) });
+});
+
+// ── POST /api/printer-admin/test-page ─────────────────────────────────────────
+// Queues a calibration page to this printer. The client recognises kind
+// 'test_page' and prints rulers and samples built from its own settings, so the
+// body here is only what shows up in message history.
+router.post("/test-page", requireApiKey, (req, res) => {
+  const p = req.printer;
+  if (db.hasPendingTestPage(p.id)) {
+    return res.status(409).json({ error: "A test page is already waiting to print" });
+  }
+  const message = db.createMessage({
+    id:          uuidv4(),
+    printer_id:  p.id,
+    source:      "web",
+    sender_name: "Test page",
+    body:        "Printer test page",
+    word_wrap:   1,
+    kind:        "test_page",
+  });
+  return res.status(201).json({ success: true, message_id: message.id });
 });
 
 // ── DELETE /api/printer-admin/me ──────────────────────────────────────────────
@@ -96,7 +117,7 @@ router.get("/threads", requireApiKey, (req, res) => {
 });
 
 // ── GET /api/printer-admin/thread ────────────────────────────────────────────
-// Full message list for one conversation, oldest-first, each tagged with
+// Full message list for one conversation, newest-first, each tagged with
 // direction ('in' = received, 'out' = sent) so the UI can align them like a
 // chat. Pass either ?counterparty_id=<printer id> or ?sender_name=<name>.
 router.get("/thread", requireApiKey, (req, res) => {
@@ -116,11 +137,13 @@ router.get("/thread", requireApiKey, (req, res) => {
 });
 
 // ── GET /api/printer-admin/recent ────────────────────────────────────────────
-// Most recent messages in BOTH directions (sent and received), newest first.
-// Powers the "Your recent messages" panel on the send page.
+// Messages in BOTH directions (sent and received), newest first.
+// ?limit=10&offset=0. Powers the "Your recent messages" panel on the send page
+// and the All tab of message history.
 router.get("/recent", requireApiKey, (req, res) => {
-  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || "10", 10)));
-  const messages = db.getRecentActivity(req.printer.id, { limit });
+  const limit  = Math.min(200, Math.max(1, parseInt(req.query.limit  || "10", 10)));
+  const offset = Math.max(0,              parseInt(req.query.offset || "0",  10));
+  const messages = db.getRecentActivity(req.printer.id, { limit, offset });
   return res.json({ messages });
 });
 

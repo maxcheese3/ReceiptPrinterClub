@@ -3,8 +3,12 @@ export interface Printer {
   name: string;
   description?: string;
   location?: string;
-  columns: number;
-  font_size: number;
+  /** Printhead width in dots: 384 for 58mm paper, 576 for 80mm. */
+  print_width_dots: number;
+  /** How the printer shows emoji: custom pictures, or text stand-ins like <3. */
+  emoji_mode?: 'glyph' | 'text';
+  /** Print client version from its last poll; null with a last_seen means an old client. */
+  client_version?: string | null;
   last_seen?: string;
   /** SQLite integer boolean: 0 or 1. Always test by truthiness, never `=== false`. */
   active?: number | boolean;
@@ -21,9 +25,15 @@ export interface Message {
   image_path?: string;
   word_wrap: number;
   font_size: number;
+  /** Body text alignment; null means left. */
+  align?: 'center' | 'right' | null;
   source: 'web' | 'api' | 'email';
   status: 'pending' | 'printing' | 'printed' | 'failed';
   created_at: string;
+  /** The printer that sent it, set only for logged-in, non-anonymous sends. */
+  sender_printer_id?: string | null;
+  /** That printer's name (history endpoints only). */
+  sender_printer_name?: string | null;
 }
 
 /** 'in' = received by me, 'out' = sent by me. */
@@ -40,6 +50,9 @@ export interface Thread {
   message_count: number;
   latest_at: string;
   latest_body?: string;
+  /** word_wrap and source of the latest message, to show its text like history does. */
+  latest_word_wrap?: number;
+  latest_source?: string;
   latest_image?: string;
   latest_direction: Direction;
 }
@@ -54,6 +67,7 @@ export interface ThreadMessage extends Message {
 export interface RecentMessage extends Message {
   direction: Direction;
   counterparty_name: string | null;
+  recipient_name: string | null;
 }
 
 /** A message the logged-in printer owner SENT to another printer.
@@ -79,6 +93,8 @@ export interface GuestSentMessage {
   printer_name: string;
   sender_name?: string;
   body?: string;
+  /** 1 if sent from the Text tab (formatting applies), 0 for ASCII art. Missing on older entries. */
+  word_wrap?: number;
   image_path?: string;
   created_at: string;
   status: 'sent' | 'failed';

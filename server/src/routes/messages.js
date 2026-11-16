@@ -203,7 +203,7 @@ router.post(
   async (req, res) => {
     try {
       const {
-        printer_id, sender_email, body, word_wrap, font_size,
+        printer_id, sender_email, body, word_wrap, font_size, align,
         image_url, image_headers,
         oauth_token_url, oauth_client_id, oauth_client_secret,
       } = req.body;
@@ -324,6 +324,7 @@ router.post(
         id:           uuidv4(),
         word_wrap:    word_wrap === "0" || word_wrap === 0 ? 0 : 1,
         font_size:    font_size ? parseInt(font_size, 10) : null,
+        align,
         printer_id,
         source,
         sender_name:  sender_name  || null,
@@ -368,6 +369,13 @@ router.post(
 );
 
 // ── GET /api/messages/poll ────────────────────────────────────────────────────
+// The print client's version, from its X-Client-Version header. Clients from
+// before 4.0 don't send one, which is stored as NULL ("old client").
+function clientVersion(req) {
+  const v = String(req.get("x-client-version") || "").trim();
+  return v && v.length <= 20 && /^[0-9A-Za-z.+-]+$/.test(v) ? v : null;
+}
+
 router.get("/poll", (req, res) => {
   const apiKey = req.headers["x-api-key"];
   if (!apiKey) return res.status(401).json({ error: "X-API-Key header required" });
@@ -375,11 +383,18 @@ router.get("/poll", (req, res) => {
   const printer = db.getPrinterByApiKey(apiKey);
   if (!printer) return res.status(403).json({ error: "Invalid API key" });
 
-  db.updatePrinterLastSeen(printer.id);
+  db.updatePrinterLastSeen(printer.id, clientVersion(req));
   const messages = db.getPendingMessages(printer.id);
   for (const m of messages) db.setMessageStatus(m.id, "printing");
 
-  return res.json({ printer_id: printer.id, messages });
+  // The client takes its printer width and emoji mode from here on every poll, so
+  // changes made on the My Printer page apply without touching the client.
+  return res.json({
+    printer_id:       printer.id,
+    print_width_dots: printer.print_width_dots,
+    emoji_mode:       printer.emoji_mode,
+    messages,
+  });
 });
 
 // ── PATCH /api/messages/:id ───────────────────────────────────────────────────

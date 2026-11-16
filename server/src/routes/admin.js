@@ -12,6 +12,7 @@
 const express = require("express");
 const crypto  = require("crypto");
 const db      = require("../db");
+const { normalizeWidthDots, normalizeEmojiMode } = require("../lib/printerWidth");
 
 const router = express.Router();
 
@@ -102,7 +103,7 @@ router.patch("/printers/:id", requireAuth, (req, res) => {
   const printer = db.getPrinterById(req.params.id);
   if (!printer) return res.status(404).json({ error: "Printer not found" });
 
-  const { name, description, location, columns, font_size, active, hidden } = req.body;
+  const { name, description, location, print_width_dots, emoji_mode, active, hidden } = req.body;
 
   if (name && name.trim() !== printer.name) {
     const dup = db.listPrinters(false).find(p => p.name === name.trim() && p.id !== printer.id);
@@ -113,13 +114,14 @@ router.patch("/printers/:id", requireAuth, (req, res) => {
     name:        name        !== undefined ? name.trim()                                        : printer.name,
     description: description !== undefined ? (description.trim() || null)                       : printer.description,
     location:    location    !== undefined ? (location.trim()    || null)                       : printer.location,
-    columns:     columns     !== undefined ? Math.max(10, Math.min(200, parseInt(columns, 10))) : printer.columns,
-    font_size:   font_size   !== undefined ? Math.max(6,  Math.min(72,  parseInt(font_size, 10))): printer.font_size,
+    print_width_dots: normalizeWidthDots(print_width_dots) ?? printer.print_width_dots,
+    emoji_mode:       normalizeEmojiMode(emoji_mode)       ?? printer.emoji_mode,
     active:      active      !== undefined ? (active ? 1 : 0)                                   : printer.active,
     hidden:      hidden      !== undefined ? (hidden ? 1 : 0)                                   : (printer.hidden || 0),
   });
 
-  return res.json({ success: true, printer: db.getPrinterById(req.params.id) });
+  const updated = db.getPrinterById(req.params.id);
+  return res.json({ success: true, printer: { ...db.printerInfo(updated), api_key: updated.api_key } });
 });
 
 // ── DELETE /api/admin/printers/:id ───────────────────────────────────────────

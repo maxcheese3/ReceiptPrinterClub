@@ -11,6 +11,7 @@ Update when any of the following change: routes, environment variables, file str
 ## Version sync
 `frontend/src/version.ts` must match the version in the latest CHANGELOG.md entry.
 Change only the `APP_VERSION` string — nothing else in that file.
+`client/package.json` `version` (and the two root `version` fields in `client/package-lock.json`) must match too — the client reports it to the server.
 
 ## Branches
 `feat/` · `fix/` · `refactor/` · `chore/`

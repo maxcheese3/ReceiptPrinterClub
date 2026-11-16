@@ -150,7 +150,9 @@ Can throw a `TypeError` if the browser's 2D context limit is reached. `useDither
 
 ---
 
-### 14. Shared localStorage keys between `SendMessage.tsx` and `SendMessageV2.tsx`
+### ~~14. Shared localStorage keys between `SendMessage.tsx` and `SendMessageV2.tsx`~~ ✓ Fixed
+
+Resolved by removing the legacy page (`SendMessage.tsx`, 4.0.0); `SendMessageV2.tsx` is the only page using these keys.
 
 Both pages use `'printbridge_sender_name'` and `'printbridge_font_size'`. Writes from the legacy `/send` route silently overwrite values used by `/send-message`. Either document as intentional or namespace the v2 keys (e.g. `_v2` suffix, like `GRAYSCALE_KEY` already does).
 

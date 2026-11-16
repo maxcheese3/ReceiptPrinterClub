@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import PrinterMultiSelect from '../components/PrinterMultiSelect';
-import { loadSavedIds, saveIds } from '../components/PrinterChecklist';
+import { loadSavedIds, saveIds } from '../lib/printers';
 import { usePrinters } from '../hooks/usePrinters';
 import { useDithering } from '../hooks/useDithering';
 import { useImageResize } from '../hooks/useImageResize';
@@ -10,8 +10,11 @@ import PrintConfirmModal from '../components/PrintConfirmModal';
 import type { PrintResult } from '../components/PrintConfirmModal';
 import { usePrinterAuth } from '../contexts/PrinterAuthContext';
 import RecentActivity from '../components/RecentActivity';
+import FromPicker from '../components/FromPicker';
+import { lastFromTo } from '../lib/savedFroms';
 import { addGuestMessage } from '../lib/guestHistory';
 import type { GuestSentMessage } from '../types/api';
+import { SIZE_STEPS, DEFAULT_PT, DEFAULT_WIDTH_DOTS, stepForPt, colsFor, displayWidth } from '../lib/printerGeometry';
 
 const GRAYSCALE_KEY = 'printbridge_grayscale_v2';
 const SENDER_NAME_KEY = 'printbridge_sender_name';
@@ -19,15 +22,12 @@ const ANONYMOUS_KEY   = 'printbridge_send_anonymous';
 const FONT_SIZE_KEY = 'printbridge_font_size';
 const ACTIVE_TAB_KEY = 'printbridge_active_tab';
 const WORD_WRAP_KEY = 'printbridge_word_wrap';
+const ALIGN_KEY = 'printbridge_align';
 const DITHER_METHOD_KEY = 'printbridge_dither_method';
 const SHOW_ADVANCED_KEY = 'printbridge_show_advanced';
-const FONT_SIZE_COLS: Record<number, number> = { 7: 31, 8: 27, 9: 24, 10: 22, 11: 20, 12: 18, 14: 16 };
-
-function colsForFontSize(pt: number): number {
-  return FONT_SIZE_COLS[pt] ?? Math.round(24 * 9 / pt);
-}
 
 type ActiveTab = 'text' | 'ascii';
+type Align = 'left' | 'center' | 'right';
 
 export default function SendMessageV2() {
   const { printers, printerMap, reload: reloadPrinters } = usePrinters();
@@ -38,14 +38,15 @@ export default function SendMessageV2() {
   // When logged in to a printer we send the API key with each message, so the
   // server can attribute it and keep the sent history for us. When logged out
   // we record the send in localStorage instead (see lib/guestHistory).
-  const { apiKey } = usePrinterAuth();
+  const { apiKey, authFetch } = usePrinterAuth();
 
   // Bumped after each successful send so the history list below re-reads.
   const [historyVersion, setHistoryVersion] = useState(0);
 
-  // TO: printer selection — URL param takes priority over localStorage
+  // TO: printer selection — URL param takes priority over localStorage.
+  // ?reply=<id> (from a Reply button in message history) addresses that printer.
   const [selectedIds, setSelectedIds] = useState<string[]>(() => {
-    const fromUrl = searchParams.get('to');
+    const fromUrl = searchParams.get('to') ?? searchParams.get('reply');
     if (fromUrl) return fromUrl.split(',').filter(Boolean);
     return loadSavedIds();
   });
@@ -60,6 +61,33 @@ export default function SendMessageV2() {
   const [senderName, setSenderName] = useState(
     () => localStorage.getItem(SENDER_NAME_KEY) ?? ''
   );
+
+  function updateSenderName(name: string) {
+    setSenderName(name);
+    localStorage.setItem(SENDER_NAME_KEY, name);
+  }
+
+  // Reply to a registered printer: address it, switch FROM to whatever you last
+  // signed messages to them with, and put the cursor in the message box.
+  // The Anonymous toggle is left as it is.
+  async function applyReply(printerId: string) {
+    handleSelectionChange([printerId]);
+    textareaRef.current?.focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!apiKey) return;
+    const from = await lastFromTo(authFetch, printerId);
+    if (from) updateSenderName(from);
+  }
+
+  // Arriving from a Reply button in message history (?reply=<printer id>).
+  // handleSelectionChange rewrites the URL to ?to=, so this runs once.
+  const replyHandledRef = useRef(false);
+  useEffect(() => {
+    const replyTo = searchParams.get('reply');
+    if (!replyTo || replyHandledRef.current) return;
+    replyHandledRef.current = true;
+    applyReply(replyTo);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // "Send anonymous" — logged-in users opting out of attribution for a message.
   // Persisted so it survives a reload mid-compose, but it defaults to OFF, and
@@ -89,10 +117,17 @@ export default function SendMessageV2() {
 
   // Body
   const [body, setBody] = useState('');
+  // LEGACY(old-client): sizes saved before the named sizes (8pt, 10pt, 14pt…)
+  // snap to the nearest size the printer has — remove once every printer
+  // reports a new client (read the saved value as-is).
   const [fontSize, setFontSize] = useState(() => {
-    const saved = localStorage.getItem(FONT_SIZE_KEY);
-    const n = saved ? Number(saved) : 12;
-    return isNaN(n) ? 12 : n;
+    const saved = Number(localStorage.getItem(FONT_SIZE_KEY));
+    return stepForPt(saved || DEFAULT_PT).pt;
+  });
+  // Body alignment. On the ASCII Art tab the whole picture moves as a block.
+  const [align, setAlign] = useState<Align>(() => {
+    const saved = localStorage.getItem(ALIGN_KEY);
+    return saved === 'center' || saved === 'right' ? saved : 'left';
   });
   const [cursorLineLen, setCursorLineLen] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -133,20 +168,10 @@ export default function SendMessageV2() {
 
   const isMobile = /Mobi|Android|iPhone|iPad|IEMobile/i.test(navigator.userAgent);
 
-  // Column counter — use the narrowest printer's actual column count, scaled to the selected font size
-  const maxCols = (() => {
-    if (selectedIds.length === 0) return colsForFontSize(fontSize);
-    const cols = selectedIds.map((id) => {
-      const p = printerMap[id];
-      if (!p) return colsForFontSize(fontSize);
-      const printerFontSize = p.font_size ?? 9;
-      const printerCols = p.columns ?? colsForFontSize(printerFontSize);
-      return printerFontSize === fontSize
-        ? printerCols
-        : Math.round(printerCols * printerFontSize / fontSize);
-    });
-    return Math.min(...cols);
-  })();
+  // Column counter — characters per line at this size on the narrowest selected printer
+  const maxCols = selectedIds.length === 0
+    ? colsFor(DEFAULT_WIDTH_DOTS, fontSize)
+    : Math.min(...selectedIds.map((id) => colsFor(printerMap[id]?.print_width_dots ?? DEFAULT_WIDTH_DOTS, fontSize)));
 
   const TEXTAREA_MAX_HEIGHT = 320;
 
@@ -179,7 +204,7 @@ export default function SendMessageV2() {
     const textBefore = text.slice(0, cursorPos);
     const cursorLine = textBefore.split('\n').length - 1;
     const lines = text.split('\n');
-    setCursorLineLen([...(lines[cursorLine] ?? '')].length);
+    setCursorLineLen(displayWidth(lines[cursorLine] ?? ''));
   }
 
   // Dither render
@@ -313,6 +338,7 @@ export default function SendMessageV2() {
           if (body) fd.append('body', body);
           fd.append('word_wrap', wordWrap ? '1' : '0');
           fd.append('font_size', String(fontSize));
+          fd.append('align', align);
           if (currentFile) {
             const imageToSend = isGrayscale && processedBlob
               ? new File([processedBlob], currentFile.name.replace(/\.[^.]+$/, '.png'), { type: 'image/png' })
@@ -372,6 +398,7 @@ export default function SendMessageV2() {
             printer_name: printerMap[r.printer_id]?.name ?? r.printer_id,
             sender_name:  senderName.trim() || undefined,
             body:         body || undefined,
+            word_wrap:    wordWrap ? 1 : 0,
             image_path:   r.image_path,
             created_at:   r.created_at ? r.created_at + 'Z' : new Date().toISOString(),
             status:       r.success ? 'sent' : 'failed',
@@ -437,21 +464,15 @@ export default function SendMessageV2() {
           <label htmlFor="v2-sender-name">
             <span className="label-text">From</span>
           </label>
-          {/* Input + toggle share one shaded shell so the toggle sits INSIDE the
-              shaded area, exactly like the "Aa" button lives inside the tab pill. */}
-          <div className={`from-shell${apiKey ? ' has-toggle' : ''}`}>
-            <input
-              type="text"
-              id="v2-sender-name"
-              value={senderName}
-              onChange={(e) => {
-                setSenderName(e.target.value);
-                localStorage.setItem(SENDER_NAME_KEY, e.target.value);
-              }}
-              placeholder={anonymous ? 'Anonymous' : 'Your name (optional)'}
-              maxLength={100}
-            />
-
+          {/* Input, saved-names ▾ and Anonymous toggle share one shaded shell so
+              the toggle sits INSIDE the shaded area, exactly like the "Aa" button
+              lives inside the tab pill. */}
+          <FromPicker
+            id="v2-sender-name"
+            value={senderName}
+            onChange={updateSenderName}
+            placeholder={anonymous ? 'Anonymous' : 'Your name (optional)'}
+          >
             {/* Only meaningful when logged in — a guest is already unattributed,
                 so the toggle would be a no-op and just add confusion. */}
             {apiKey && (
@@ -469,7 +490,7 @@ export default function SendMessageV2() {
                 Anonymous
               </button>
             )}
-          </div>
+          </FromPicker>
         </div>
 
         {apiKey && anonymous && (
@@ -513,36 +534,59 @@ export default function SendMessageV2() {
 
           {showAdvanced && (
             <div className="send-v2-advanced-body send-v2-advanced-body--inline">
-              <label className="image-adjust-label" htmlFor="v2-font-size">Font size</label>
-              <select
-                id="v2-font-size"
-                value={fontSize}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  setFontSize(n);
-                  localStorage.setItem(FONT_SIZE_KEY, String(n));
-                }}
-                title="Print font size"
-                style={{ width: 'auto' }}
-              >
-                {[7, 8, 9, 10, 11, 12, 14].map((s) => (
-                  <option key={s} value={s}>{s}pt</option>
-                ))}
-              </select>
-              <span className="send-v2-advanced-divider" />
-              <label className="image-adjust-label" htmlFor="v2-word-wrap">Wrap</label>
-              <label className="toggle-label" title="Wrap long lines automatically">
-                <input
-                  id="v2-word-wrap"
-                  type="checkbox"
-                  checked={wordWrap}
+              <span className="send-v2-advanced-group">
+                <label className="image-adjust-label" htmlFor="v2-font-size">Size</label>
+                <select
+                  id="v2-font-size"
+                  value={fontSize}
                   onChange={(e) => {
-                    setWordWrap(e.target.checked);
-                    localStorage.setItem(WORD_WRAP_KEY, e.target.checked ? '1' : '0');
+                    const n = Number(e.target.value);
+                    setFontSize(n);
+                    localStorage.setItem(FONT_SIZE_KEY, String(n));
                   }}
-                />
-                <span className="toggle-track"><span className="toggle-thumb" /></span>
-              </label>
+                  title="Print size"
+                  style={{ width: 'auto' }}
+                >
+                  {SIZE_STEPS.map((s) => (
+                    <option key={s.pt} value={s.pt}>{s.name}</option>
+                  ))}
+                </select>
+              </span>
+              <span className="send-v2-advanced-divider" />
+              <span className="send-v2-advanced-group">
+                <label className="image-adjust-label" htmlFor="v2-align">Align</label>
+                <select
+                  id="v2-align"
+                  value={align}
+                  onChange={(e) => {
+                    const a = e.target.value as Align;
+                    setAlign(a);
+                    localStorage.setItem(ALIGN_KEY, a);
+                  }}
+                  title="Where text sits on the paper. Headers, banners and dividers always span the full width."
+                  style={{ width: 'auto' }}
+                >
+                  <option value="left">Left</option>
+                  <option value="center">Center</option>
+                  <option value="right">Right</option>
+                </select>
+              </span>
+              <span className="send-v2-advanced-divider" />
+              <span className="send-v2-advanced-group">
+                <label className="image-adjust-label" htmlFor="v2-word-wrap">Wrap</label>
+                <label className="toggle-label" title="Wrap long lines automatically">
+                  <input
+                    id="v2-word-wrap"
+                    type="checkbox"
+                    checked={wordWrap}
+                    onChange={(e) => {
+                      setWordWrap(e.target.checked);
+                      localStorage.setItem(WORD_WRAP_KEY, e.target.checked ? '1' : '0');
+                    }}
+                  />
+                  <span className="toggle-track"><span className="toggle-thumb" /></span>
+                </label>
+              </span>
             </div>
           )}
 
@@ -555,7 +599,8 @@ export default function SendMessageV2() {
               maxLength={5000}
               spellCheck={activeTab === 'text'}
               className={wordWrap ? 'word-wrap-on' : ''}
-              style={{ fontSize: '16px' }}
+              // Previews alignment on the Text tab; ASCII art stays left so it's editable.
+              style={{ fontSize: '16px', textAlign: activeTab === 'text' ? align : 'left' }}
               value={body}
               onChange={(e) => { setBody(e.target.value); updateCursorStats(); autoResize(); }}
               onKeyUp={() => { updateCursorStats(); autoResize(); }}
@@ -742,7 +787,7 @@ export default function SendMessageV2() {
 
       {/* History of what this person has sent. Reads from the server when logged
           in to a printer, from localStorage when not. */}
-      <RecentActivity refreshKey={historyVersion} />
+      <RecentActivity refreshKey={historyVersion} onReply={applyReply} />
 
     </section>
 

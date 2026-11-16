@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import FeedbackBanner from '../components/FeedbackBanner';
 import { usePrinters } from '../hooks/usePrinters';
-
-const PAPER_COLS: Record<string, number> = { '58': 24, '80': 36 };
+import { WIDTH_PRESETS } from '../lib/printerGeometry';
 
 export default function RegisterPrinter() {
   const { reload } = usePrinters();
@@ -10,7 +9,7 @@ export default function RegisterPrinter() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
-  const [paperWidth, setPaperWidth] = useState<'58' | '80'>('58');
+  const [widthDots, setWidthDots] = useState(WIDTH_PRESETS[0].dots);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [result, setResult] = useState<{ apiKey: string; printerId: string } | null>(null);
@@ -22,7 +21,6 @@ export default function RegisterPrinter() {
     setResult(null);
     setSubmitting(true);
     try {
-      const cols = PAPER_COLS[paperWidth] ?? 24;
       const res = await fetch('/api/printers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -30,8 +28,7 @@ export default function RegisterPrinter() {
           name: name.trim(),
           description: description.trim() || undefined,
           location: location.trim() || undefined,
-          font_size: 9,
-          columns: cols,
+          print_width_dots: widthDots,
         }),
       });
       const data = await res.json() as { success: boolean; api_key?: string; printer?: { id: string }; error?: string };
@@ -39,7 +36,7 @@ export default function RegisterPrinter() {
         setName('');
         setDescription('');
         setLocation('');
-        setPaperWidth('58');
+        setWidthDots(WIDTH_PRESETS[0].dots);
         setResult({ apiKey: data.api_key!, printerId: data.printer!.id });
         reload();
       } else {
@@ -107,22 +104,23 @@ export default function RegisterPrinter() {
           />
         </div>
         <div className="field">
-          <label><span className="label-text">Paper Width</span></label>
+          <label>
+            <span className="label-text">Characters per line</span>
+            <span className="label-hint"> Best guess for now — a test page will confirm it once your printer is set up</span>
+          </label>
           <div className="paper-width-options">
-            {(['58', '80'] as const).map((w) => (
-              <label key={w} className="paper-width-option">
+            {WIDTH_PRESETS.map((preset) => (
+              <label key={preset.dots} className="paper-width-option">
                 <input
                   type="radio"
                   name="reg-paper-width"
-                  value={w}
-                  checked={paperWidth === w}
-                  onChange={() => setPaperWidth(w)}
+                  value={preset.dots}
+                  checked={widthDots === preset.dots}
+                  onChange={() => setWidthDots(preset.dots)}
                 />
                 <span className="paper-width-label">
-                  <strong>{w} mm</strong>
-                  <span className="paper-width-hint">
-                    {PAPER_COLS[w]} columns at 9pt · set <code>PRINT_COLUMNS={PAPER_COLS[w]}</code> in client .env
-                  </span>
+                  <strong>{preset.cols}</strong>
+                  <span className="paper-width-hint">{preset.hint}</span>
                 </span>
               </label>
             ))}
@@ -150,8 +148,9 @@ export default function RegisterPrinter() {
             <ol>
               <li>Copy the <code>client/</code> folder to your machine.</li>
               <li>Run <code>npm install</code> inside it.</li>
-              <li>Copy <code>.env.example</code> → <code>.env</code>, set your API key, server URL, and <code>PRINT_COLUMNS</code> to match your paper width above.</li>
+              <li>Copy <code>.env.example</code> → <code>.env</code>, set your API key, server URL, and where your printer is (<code>PRINTER_DEVICE</code> or <code>PRINTER_NAME</code>).</li>
               <li>Run <code>node client.js</code>.</li>
+              <li>Log in on <strong>My Printer</strong> and print a test page to check characters per line and emoji support.</li>
             </ol>
           </div>
         </div>

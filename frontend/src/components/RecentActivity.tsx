@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { usePrinterAuth } from '../contexts/PrinterAuthContext';
-import MessageCard from './MessageCard';
+import MessageCard, { sentLabel, receivedLabel } from './MessageCard';
 import { getGuestHistory, removeGuestMessage, clearGuestHistory } from '../lib/guestHistory';
 import type { RecentMessage, GuestSentMessage } from '../types/api';
+import { displayBody } from '../lib/messageText';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 
 /**
  * The activity panel under the send form. Behaves differently by user type:
@@ -17,13 +19,16 @@ import type { RecentMessage, GuestSentMessage } from '../types/api';
 
 const GUEST_PAGE = 5;
 const RECENT_LIMIT = 10;
+const REFRESH_MS = 15_000;
 
 interface Props {
   /** Bump to force a re-read after a send. */
   refreshKey: number;
+  /** Reply to a received message from a registered printer (by its id). */
+  onReply?: (printerId: string) => void;
 }
 
-export default function RecentActivity({ refreshKey }: Props) {
+export default function RecentActivity({ refreshKey, onReply }: Props) {
   const { apiKey, authFetch } = usePrinterAuth();
   const isGuest = !apiKey;
 
@@ -37,14 +42,16 @@ export default function RecentActivity({ refreshKey }: Props) {
   const [recent, setRecent] = useState<RecentMessage[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const loadRecent = useCallback(async () => {
-    setLoading(true);
+  // `silent` skips the loading state, for background refreshes that shouldn't
+  // make the Refresh link flicker.
+  const loadRecent = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await authFetch(`/api/printer-admin/recent?limit=${RECENT_LIMIT}`);
       const data = await res.json() as { messages: RecentMessage[] };
       setRecent(data.messages ?? []);
     } catch { /* keep whatever we had */ }
-    finally { setLoading(false); }
+    finally { if (!silent) setLoading(false); }
   }, [authFetch]);
 
   useEffect(() => {
@@ -58,6 +65,14 @@ export default function RecentActivity({ refreshKey }: Props) {
       setGuestItems(getGuestHistory());
     }
   }, [isGuest, refreshKey, loadRecent]);
+
+  function refresh() {
+    if (!isGuest) loadRecent();
+    setGuestItems(getGuestHistory());
+  }
+
+  // Keep the open panel current, e.g. to catch a reply arriving.
+  useAutoRefresh(() => loadRecent(true), REFRESH_MS, expanded && !isGuest);
 
   const total = isGuest ? guestItems.length : recent.length + guestItems.length;
 
@@ -123,7 +138,11 @@ export default function RecentActivity({ refreshKey }: Props) {
             ) : (
               <>
                 Your latest sent and received messages.{' '}
-                <Link to="/myprinter/message-history">See full history</Link>.
+                <Link to="/myprinter/message-history">See full history</Link>
+                {' · '}
+                <button type="button" className="link-btn" onClick={refresh} disabled={loading}>
+                  {loading ? 'Refreshing…' : 'Refresh'}
+                </button>
               </>
             )}
           </p>
@@ -133,10 +152,11 @@ export default function RecentActivity({ refreshKey }: Props) {
               ? guestItems.slice(0, guestLimit).map((m) => (
                 <MessageCard
                   key={m.id}
-                  label={`To: ${m.printer_name}`}
+                  direction="out"
+                  label={sentLabel(m.printer_name, m.sender_name)}
                   status={m.status}
                   createdAt={m.created_at}
-                  body={m.body}
+                  body={displayBody(m)}
                   imagePath={m.image_path}
                   error={m.error}
                   action={
@@ -157,41 +177,43 @@ export default function RecentActivity({ refreshKey }: Props) {
                   return (
                     <MessageCard
                       key={`local-${m.id}`}
-                      label={`To: ${m.printer_name}`}
+                      direction="out"
+                      // The chip already says Anonymous; only add "from" for a
+                      // typed name, which is what the recipient saw.
+                      label={sentLabel(
+                        m.printer_name,
+                        m.sender_name?.trim().toLowerCase() === 'anonymous' ? undefined : m.sender_name,
+                      )}
                       status={m.status}
                       createdAt={m.created_at}
-                      body={m.body}
+                      body={displayBody(m)}
                       imagePath={m.image_path}
                       error={m.error}
                       badge={
-                        <>
-                          <span className="dir-badge out">Sent</span>
-                          <span
-                            className="dir-badge anon"
-                            title="Not linked to your printer. Only saved on this device."
-                          >Anonymous</span>
-                        </>
+                        <span
+                          className="dir-badge anon"
+                          title="Not linked to your printer. Only saved on this device."
+                        >Anonymous</span>
                       }
                     />
                   );
                 }
                 const m = row.msg;
                 const isOut = m.direction === 'out';
-                const who = m.counterparty_name ?? '(unknown)';
+                const from = m.sender_printer_id;
                 return (
                   <MessageCard
                     key={m.id}
-                    // Direction is the primary fact here, so lead with it.
-                    label={isOut ? `To: ${who}` : `From: ${who}`}
+                    direction={m.direction}
+                    label={isOut
+                      ? sentLabel(m.recipient_name, m.sender_name)
+                      : receivedLabel(m.sender_name, m.sender_printer_name)}
                     status={m.status}
                     createdAt={m.created_at}
-                    body={m.body}
+                    body={displayBody(m)}
                     imagePath={m.image_path}
-                    badge={
-                      <span className={`dir-badge ${isOut ? 'out' : 'in'}`}>
-                        {isOut ? 'Sent' : 'Received'}
-                      </span>
-                    }
+                    // Only a registered printer can be replied to; guests have no inbox.
+                    onReply={!isOut && from && onReply ? () => onReply(from) : undefined}
                   />
                 );
               })}

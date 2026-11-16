@@ -2,17 +2,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAdminAuth } from '../hooks/useAdminAuth';
 import type { Message, AdminStats } from '../types/api';
+import { dotsForCols, normalCols } from '../lib/printerGeometry';
+import { displayBody } from '../lib/messageText';
 
 interface AdminPrinter {
   id: string;
   name: string;
   description?: string;
   location?: string;
-  columns: number;
-  font_size: number;
+  print_width_dots: number;
+  emoji_mode: 'glyph' | 'text';
   active: boolean | number;
   hidden: boolean | number;
   last_seen?: string;
+  client_version?: string | null;
 }
 
 interface SuperAdminProps {
@@ -150,7 +153,7 @@ export default function SuperAdmin({ onOpenModal }: SuperAdminProps) {
                 <thead>
                   <tr>
                     <th>Name</th><th>Description</th><th>Location</th>
-                    <th>Cols</th><th>Font</th><th>Status</th><th>Visible</th><th>Last Seen</th><th>Actions</th>
+                    <th>Chars/line</th><th>Emoji</th><th>Status</th><th>Visible</th><th>Last Seen</th><th>Client</th><th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -216,7 +219,7 @@ export default function SuperAdmin({ onOpenModal }: SuperAdminProps) {
                           style={{ cursor: 'pointer' }}
                           onClick={() => onOpenModal(m)}
                         >
-                          {(m.body ?? '').slice(0, 80) || '—'}
+                          {(displayBody(m) ?? '').slice(0, 80) || '—'}
                         </div>
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
@@ -259,8 +262,8 @@ function PrinterRow({ printer: p, saving, lastSeenLabel, onSave, onDelete, onTog
   const [name, setName] = useState(p.name);
   const [description, setDescription] = useState(p.description ?? '');
   const [location, setLocation] = useState(p.location ?? '');
-  const [columns, setColumns] = useState(p.columns);
-  const [fontSize, setFontSize] = useState(p.font_size);
+  const [cols, setCols] = useState(normalCols(p.print_width_dots));
+  const [emojiMode, setEmojiMode] = useState(p.emoji_mode);
 
   return (
     <tr className={!p.active ? 'inactive' : ''}>
@@ -271,20 +274,22 @@ function PrinterRow({ printer: p, saving, lastSeenLabel, onSave, onDelete, onTog
         <input
           className="admin-inline-input"
           type="number"
-          value={columns}
-          onChange={(e) => setColumns(Number(e.target.value))}
+          min={11}
+          max={85}
+          value={cols}
+          onChange={(e) => setCols(Number(e.target.value))}
           style={{ width: 60, minWidth: 60 }}
+          title="Normal-size characters per line: 32 most 58mm, 42 narrow 80mm, 48 most 80mm"
         />
       </td>
       <td>
         <select
           className="admin-inline-select"
-          value={fontSize}
-          onChange={(e) => setFontSize(Number(e.target.value))}
+          value={emojiMode}
+          onChange={(e) => setEmojiMode(e.target.value as 'glyph' | 'text')}
         >
-          {[7, 8, 9, 10, 11, 12, 14].map((s) => (
-            <option key={s} value={s}>{s}pt</option>
-          ))}
+          <option value="glyph">Pictures</option>
+          <option value="text">Text</option>
         </select>
       </td>
       <td>
@@ -298,11 +303,12 @@ function PrinterRow({ printer: p, saving, lastSeenLabel, onSave, onDelete, onTog
         </span>
       </td>
       <td style={{ color: 'var(--fg-muted)', whiteSpace: 'nowrap' }}>{lastSeenLabel}</td>
+      <td style={{ color: 'var(--fg-muted)', whiteSpace: 'nowrap' }}>{p.client_version ?? (p.last_seen ? 'old' : '—')}</td>
       <td className="admin-actions">
         <button
           className="btn btn-sm btn-save"
           disabled={saving}
-          onClick={() => onSave({ name, description, location, columns, font_size: fontSize })}
+          onClick={() => onSave({ name, description, location, print_width_dots: dotsForCols(cols), emoji_mode: emojiMode })}
         >
           {saving ? '…' : 'Save'}
         </button>

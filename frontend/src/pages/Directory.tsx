@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePrinters } from '../hooks/usePrinters';
-import { printerStatusText } from '../components/PrinterChecklist';
+import { printerStatusText, clientLabel } from '../lib/printers';
 import type { Printer, PublicStats } from '../types/api';
 
 export default function Directory() {
@@ -55,6 +55,7 @@ export default function Directory() {
   function renderCard(printer: Printer) {
     const isSelected = selectedIds.includes(printer.id);
     const { online } = printerStatusText(printer);
+    const client = clientLabel(printer);
     return (
       <div
         key={printer.id}
@@ -98,6 +99,11 @@ export default function Directory() {
                   <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
                 </svg>
                 {' '}{printer.location}
+              </span>
+            )}
+            {client && (
+              <span className={`directory-meta-item directory-meta-client${printer.client_version ? '' : ' old'}`}>
+                {client}
               </span>
             )}
           </div>

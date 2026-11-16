@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import type { Printer } from '../types/api';
-import { printerStatusText } from './PrinterChecklist';
+import { printerStatusText } from '../lib/printers';
 
 interface PrinterMultiSelectProps {
   printers: Printer[];

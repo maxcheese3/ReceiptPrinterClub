@@ -9,7 +9,7 @@ server) sitting next to the printer.
 ```bash
 cd client/
 cp .env.example .env
-nano .env                     # fill in SERVER_URL, API_KEY, PRINTER_DEVICE, etc.
+nano .env                     # fill in SERVER_URL, API_KEY, PRINTER_DEVICE, TZ
 
 docker build -t printbridge-client .
 docker run -d --name printbridge \
@@ -37,18 +37,24 @@ automatically map into the container, so you also need `--group-add` with the
 GID of the group that owns the device (`getent group lp` on most distros —
 confirm with `ls -l /dev/usb/lp0`).
 
+A Bluetooth printer bound with `rfcomm bind` works the same way: pass
+`--device /dev/rfcomm0:/dev/rfcomm0`, set `PRINTER_DEVICE=/dev/rfcomm0`, and
+use the `dialout` group's GID for `--group-add`.
+
 **B. CUPS over the network** — if the printer is managed by CUPS on another
 machine, you don't need any device passthrough at all. Set `PRINTER_NAME` and
 `CUPS_SERVER=that-machine.local` in `.env`; the `lp` command built into the
 image talks to the remote CUPS server over the network.
 
-## Running with `canvas` (legacy image-rendering mode)
+## Characters per line and the test page
 
-Not needed for the default setup. Only build with canvas if you've
-deliberately set `PRINT_CUPS_MODE=image`:
+Characters per line and emoji style aren't in `.env` — set them on the website's **My
+Printer** page, then click **Print test page** to check them. To print one
+from the container directly:
 
 ```bash
-docker build -t printbridge-client --build-arg WITH_CANVAS=true .
+docker exec printbridge node client.js --test-page
+docker exec printbridge node client.js --test-page --cols 42   # try a width before saving it
 ```
 
 ## Running the raw JS instead of Docker
