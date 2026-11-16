@@ -40,7 +40,7 @@ function resolvePrinter(toAddress) {
 
   // Try exact id
   let printer = db.getPrinterById(localPart);
-  if (printer && printer.active) return printer;
+  if (printer && printer.active && !printer.deleted_at) return printer;
 
   // Try slug match on name
   const all = db.listPrinters(true);
@@ -95,7 +95,11 @@ function startSmtpServer() {
                 const fname = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
                 const fpath = path.join(UPLOAD_DIR, fname);
                 fs.writeFileSync(fpath, att.content);
-                await upload.resizeIfNeeded(fpath);
+                const ok = await upload.resizeIfNeeded(fpath);
+                if (!ok) {
+                  fs.unlink(fpath, () => {});
+                  continue;
+                }
                 imagePath = fname;
                 break;
               }

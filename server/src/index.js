@@ -17,8 +17,15 @@ const { startSmtpServer } = require("./services/smtp");
 
 const app  = express();
 
-// Trust Caddy/Cloudflare proxy so req.ip reflects the real client IP
-if (process.env.TRUST_PROXY) app.set("trust proxy", parseInt(process.env.TRUST_PROXY, 10) || 1);
+// Trust Caddy/Cloudflare proxy so req.ip reflects the real client IP.
+// Accepts a hop count (1, 2, ...), "true", or "0"/"false" to disable.
+if (process.env.TRUST_PROXY !== undefined && process.env.TRUST_PROXY !== "") {
+  const raw = String(process.env.TRUST_PROXY).trim();
+  const value = raw === "true" ? true
+    : /^\d+$/.test(raw) ? parseInt(raw, 10)
+    : false;
+  app.set("trust proxy", value);
+}
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
 // ── Security & logging ────────────────────────────────────────────────────────

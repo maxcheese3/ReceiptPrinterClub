@@ -7,6 +7,33 @@ Versions correspond to feature branches merged into the refactor lineage.
 
 ---
 
+## [4.0.1] - 2026-11-16 — `fix/printer-history-auth`
+
+### Fixed
+
+- **Printer message history privacy** — removed the unauthenticated `GET /api/messages/:printer_id/recent` route. Anyone who knew (or looked up) a printer ID could read that printer's 50 most recent messages, including bodies, sender names and emails, image paths, and delivery status. Printer owners continue to access their own history through the API-key-protected `/api/printer-admin/*` routes.
+- **SSRF via server-side fetches** — `image_url`, OAuth token endpoints, and RSS/Atom feed/image URLs now reject localhost, private, link-local, and reserved addresses, including on redirects and at DNS-connect time. Non-image fetch results are no longer left behind in `/uploads`.
+- **Rate-limit bypass** — any request with a non-empty `X-API-Key` header used to skip message rate limiting even when the key was invalid. Only a key that resolves to a real printer raises the ceiling (to 120/60s, configurable); it is no longer unlimited.
+- **Admin login brute force** — failed admin logins are limited to 10 per 15 minutes per IP.
+- **Printer registration flooding** — registrations are limited to 5 per hour per IP.
+- **Feed polling resource limits** — feed documents and images have size caps, redirects are bounded, and each poll processes at most 50 new items. The per-subscription "Fetch now" action now polls only that feed instead of triggering every subscription.
+- **Retired printers via SMTP** — the exact-ID email lookup now excludes soft-deleted printers, matching the web/API send paths.
+- **Invalid image uploads** — files that cannot be decoded as images are rejected (400) and removed instead of being stored.
+- **Proxy trust** — `TRUST_PROXY=0` now actually disables proxy trust (previously it was coerced to `1`, making client IPs spoofable through `X-Forwarded-For` in local/dev setups).
+- **Sender-name fallback** — unnamed web messages now use Express's trusted `req.ip` instead of reading `X-Forwarded-For` directly, so a spoofed header cannot control the printed "From:" value.
+- **Error detail leakage** — `POST /api/messages` no longer returns raw exception strings in production (they remain available when `NODE_ENV` is not `production`).
+- **Dependency advisories** — refreshed the server lockfile to pick up patched `proxy-addr` (critical IP-spoofing), `body-parser`, `mailparser`/`nodemailer`, `morgan`, and `smtp-server` versions, and upgraded `sharp` to 0.35.5 for the libvips/libheif/librsvg fixes.
+
+### Changed
+
+- **API rate limiting** — all `/api` routes now have a broad per-IP limit (default 300/60s), with valid printer API keys exempt. The README's rate-limit table now matches the implementation.
+- **Private-network integrations** — if you intentionally fetch images/OAuth tokens/feeds from a private network, set `ALLOW_PRIVATE_NETWORK_FETCH=1`.
+- **Default admin password** — the server logs a warning at startup if `ADMIN_PASSWORD` is missing or still `changeme`.
+- **Server container user** — the server image now runs as an unprivileged `printbridge` user instead of root.
+- **Remaining dependency advisories** — the `uuid` 9 advisory only affects v3/v5/v6 with a caller-provided buffer (this project uses v4 only); one `qs` advisory requires an Express 5 upgrade.
+
+---
+
 ## [4.0.0] - 2026-11-13 — `refactor/unified-print-pipeline`
 
 ### Added

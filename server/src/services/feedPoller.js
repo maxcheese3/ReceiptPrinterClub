@@ -19,43 +19,92 @@ const path    = require("path");
 const { v4: uuidv4 } = require("uuid");
 const db      = require("../db");
 const { resizeIfNeeded } = require("../middleware/upload");
+const { assertSafeUrl, safeLookup } = require("../lib/urlSafety");
 
 const POLL_INTERVAL_MS = parseInt(process.env.FEED_POLL_INTERVAL_MS || "900000", 10); // 15 min
 const UPLOAD_DIR       = process.env.UPLOAD_DIR || path.join(__dirname, "../../data/uploads");
 
+const FEED_MAX_BYTES  = 5 * 1024 * 1024;  // 5 MB feed document
+const IMAGE_MAX_BYTES = 25 * 1024 * 1024; // 25 MB feed image
+const MAX_REDIRECTS   = 5;
+const MAX_ITEMS_PER_POLL = 50;
+
 // ── HTTP fetch helper ─────────────────────────────────────────────────────────
-function fetchUrl(url, options = {}) {
+async function fetchUrl(url, options = {}, redirectCount = 0) {
+  if (redirectCount > MAX_REDIRECTS) throw new Error("Too many redirects");
+
+  const checked  = await assertSafeUrl(url);
+  const maxBytes = options.maxBytes || FEED_MAX_BYTES;
+
   return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
-    const lib    = parsed.protocol === "https:" ? https : http;
-    const req    = lib.get(url, {
+    let settled = false;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err instanceof Error ? err : new Error(String(err)));
+    };
+
+    const lib = checked.protocol === "https:" ? https : http;
+    const req = lib.get(checked.href, {
       timeout: 15000,
+      lookup:  safeLookup,
       headers: { "User-Agent": "ReceiptPrinterClub-FeedPoller/1.0", ...options.headers },
     }, (res) => {
       if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+        let redirectUrl;
+        try {
+          redirectUrl = new URL(res.headers.location, url).href;
+        } catch {
+          return fail(new Error("Feed returned an invalid redirect"));
+        }
+        // Handled entirely by the recursive call; ignore this request's events.
+        settled = true;
         res.resume();
-        return fetchUrl(new URL(res.headers.location, url).href, options).then(resolve).catch(reject);
+        fetchUrl(redirectUrl, options, redirectCount + 1).then(resolve).catch(reject);
+        return;
       }
+
       let data = options.binary ? [] : "";
+      let bytes = 0;
+
+      const onData = (chunk) => {
+        if (settled) return;
+        bytes += chunk.length;
+        if (bytes > maxBytes) {
+          res.destroy();
+          return fail(new Error("Feed response was too large"));
+        }
+        if (options.binary) data.push(chunk);
+        else data += chunk;
+      };
+      const onEnd = () => {
+        if (settled) return;
+        settled = true;
+        resolve({
+          status:  res.statusCode,
+          headers: res.headers,
+          body:    options.binary ? Buffer.concat(data) : data,
+        });
+      };
+
       if (options.binary) {
-        res.on("data", c => data.push(c));
-        res.on("end",  () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(data) }));
+        res.on("data", onData);
       } else {
         res.setEncoding("utf8");
-        res.on("data", c => data += c);
-        res.on("end",  () => resolve({ status: res.statusCode, headers: res.headers, body: data }));
+        res.on("data", onData);
       }
-      res.on("error", reject);
+      res.on("end", onEnd);
+      res.on("error", fail);
     });
-    req.on("timeout", () => { req.destroy(); reject(new Error("Request timed out")); });
-    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); fail(new Error("Request timed out")); });
+    req.on("error", fail);
   });
 }
 
 // ── Save image from URL ───────────────────────────────────────────────────────
 async function saveImageFromUrl(imageUrl) {
   try {
-    const res = await fetchUrl(imageUrl, { binary: true });
+    const res = await fetchUrl(imageUrl, { binary: true, maxBytes: IMAGE_MAX_BYTES });
     if (res.status !== 200) return null;
     const ct  = (res.headers["content-type"] || "").toLowerCase();
     let ext = ".jpg";
@@ -70,7 +119,11 @@ async function saveImageFromUrl(imageUrl) {
     const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
     const destPath = path.join(UPLOAD_DIR, filename);
     fs.writeFileSync(destPath, res.body);
-    await resizeIfNeeded(destPath);
+    const ok = await resizeIfNeeded(destPath);
+    if (!ok) {
+      fs.unlink(destPath, () => {});
+      return null;
+    }
     return filename;
   } catch { return null; }
 }
@@ -185,7 +238,7 @@ async function processSubscription(sub) {
     if (sub.feed_type === "xkcd") {
       newItems = await fetchXKCD(sub.last_item_id);
     } else {
-      const res = await fetchUrl(sub.feed_url);
+      const res = await fetchUrl(sub.feed_url, { maxBytes: FEED_MAX_BYTES });
       if (res.status !== 200) {
         console.warn(`[feed] HTTP ${res.status} for ${sub.feed_url}`);
         db.updateSubscriptionChecked(sub.id, sub.last_item_id);
@@ -197,6 +250,11 @@ async function processSubscription(sub) {
       } else {
         newItems = parseRSS(xml, sub.last_item_id);
       }
+    }
+
+    if (newItems.length > MAX_ITEMS_PER_POLL) {
+      console.warn(`[feed] "${sub.name}": limiting ${newItems.length} new items to ${MAX_ITEMS_PER_POLL}`);
+      newItems = newItems.slice(0, MAX_ITEMS_PER_POLL);
     }
 
     console.log(`[feed] "${sub.name}": ${newItems.length} new item(s)`);
@@ -250,4 +308,4 @@ function start() {
   }, 30000);
 }
 
-module.exports = { start, pollAllFeeds };
+module.exports = { start, pollAllFeeds, processSubscription };

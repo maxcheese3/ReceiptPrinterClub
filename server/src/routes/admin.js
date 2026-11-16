@@ -13,11 +13,18 @@ const express = require("express");
 const crypto  = require("crypto");
 const db      = require("../db");
 const { normalizeWidthDots, normalizeEmojiMode } = require("../lib/printerWidth");
+const { loginLimiter } = require("../middleware/rateLimiter");
 
 const router = express.Router();
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const TOKEN_TTL_MS   = 8 * 60 * 60 * 1000; // 8 hours
+
+if (!ADMIN_PASSWORD) {
+  console.warn("[admin] ADMIN_PASSWORD is not set — the super-admin API is disabled.");
+} else if (ADMIN_PASSWORD === "changeme") {
+  console.warn("[admin] ADMIN_PASSWORD is still the default 'changeme'. Change it before exposing this server publicly.");
+}
 
 // Stable secret persists tokens across restarts when ADMIN_TOKEN_SECRET is set
 const TOKEN_SECRET = process.env.ADMIN_TOKEN_SECRET && process.env.ADMIN_TOKEN_SECRET.length > 8
@@ -44,6 +51,8 @@ function verifyToken(token) {
     payload = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf8"));
   } catch { return false; }
 
+  if (!payload || typeof payload !== "object" || !Number.isFinite(payload.ts)) return false;
+
   const expected = crypto.createHmac("sha256", TOKEN_SECRET).update(payloadB64).digest("hex");
 
   // timingSafeEqual requires identical buffer lengths.
@@ -64,7 +73,7 @@ function requireAuth(req, res, next) {
 }
 
 // ── POST /api/admin/login ─────────────────────────────────────────────────────
-router.post("/login", (req, res) => {
+router.post("/login", loginLimiter, (req, res) => {
   if (!ADMIN_PASSWORD) {
     return res.status(503).json({
       error: "Admin password not configured. Add ADMIN_PASSWORD to your server .env file."

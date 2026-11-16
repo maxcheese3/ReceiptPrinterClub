@@ -13,7 +13,7 @@
 const express = require("express");
 const { v4: uuidv4 } = require("uuid");
 const db     = require("../db");
-const { pollAllFeeds } = require("../services/feedPoller");
+const { assertSafeUrl } = require("../lib/urlSafety");
 
 const router = express.Router();
 
@@ -38,11 +38,14 @@ router.get("/", requireApiKey, (req, res) => {
 });
 
 // POST /api/subscriptions
-router.post("/", requireApiKey, (req, res) => {
+router.post("/", requireApiKey, async (req, res) => {
   const { name, feed_url } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: "name is required" });
-  if (!feed_url || !feed_url.trim()) return res.status(400).json({ error: "feed_url is required" });
-  try { new URL(feed_url); } catch { return res.status(400).json({ error: "Invalid feed_url" }); }
+  if (!feed_url || typeof feed_url !== "string" || !feed_url.trim()) {
+    return res.status(400).json({ error: "feed_url is required" });
+  }
+  try { await assertSafeUrl(feed_url.trim()); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
 
   const sub = db.createSubscription({
     id:         uuidv4(),
@@ -55,12 +58,19 @@ router.post("/", requireApiKey, (req, res) => {
 });
 
 // PATCH /api/subscriptions/:id
-router.patch("/:id", requireApiKey, (req, res) => {
+router.patch("/:id", requireApiKey, async (req, res) => {
   const sub = db.getSubscriptionById(req.params.id);
   if (!sub) return res.status(404).json({ error: "Subscription not found" });
   if (sub.printer_id !== req.printer.id) return res.status(403).json({ error: "Forbidden" });
 
   const { name, feed_url, active } = req.body;
+  if (feed_url !== undefined) {
+    if (typeof feed_url !== "string") {
+      return res.status(400).json({ error: "feed_url must be a string" });
+    }
+    try { await assertSafeUrl(feed_url.trim()); }
+    catch (err) { return res.status(400).json({ error: err.message }); }
+  }
   db.updateSubscription(req.params.id, {
     name:      name      !== undefined ? name.trim()    : sub.name,
     feed_url:  feed_url  !== undefined ? feed_url.trim(): sub.feed_url,
@@ -84,15 +94,15 @@ router.post("/:id/poll", requireApiKey, async (req, res) => {
   const sub = db.getSubscriptionById(req.params.id);
   if (!sub) return res.status(404).json({ error: "Subscription not found" });
   if (sub.printer_id !== req.printer.id) return res.status(403).json({ error: "Forbidden" });
-  // Async — don't await so response returns immediately
-  const { processSubscription } = require("../services/feedPoller");
+  // Async — don't await so response returns immediately.
   res.json({ success: true, message: "Poll triggered" });
-  // We import lazily to avoid circular dep
   try {
-    const fp = require("../services/feedPoller");
-    // Reset last_item_id to force re-fetch of latest
+    // Lazy import to avoid a circular dependency.
+    const { processSubscription } = require("../services/feedPoller");
+    // Reset last_item_id to force re-fetch of the latest item.
     db.updateSubscriptionChecked(sub.id, null);
-    await fp.pollAllFeeds();
+    const fresh = db.getSubscriptionById(sub.id) || sub;
+    await processSubscription(fresh);
   } catch (err) {
     console.error("[feed] Manual poll error:", err.message);
   }

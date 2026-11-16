@@ -2,6 +2,7 @@ const express = require("express");
 const { v4: uuidv4 } = require("uuid");
 const db = require("../db");
 const { DEFAULT_WIDTH_DOTS, normalizeWidthDots } = require("../lib/printerWidth");
+const { registrationLimiter } = require("../middleware/rateLimiter");
 
 const router = express.Router();
 
@@ -21,7 +22,7 @@ router.get("/stats", (_req, res) => {
 });
 
 // POST /api/printers — register a new printer
-router.post("/", (req, res) => {
+router.post("/", registrationLimiter, (req, res) => {
   const { name, description, location, print_width_dots } = req.body;
 
   if (!name || !name.trim()) {
@@ -58,7 +59,9 @@ router.post("/", (req, res) => {
 // GET /api/printers/:id/stats
 router.get("/:id/stats", (req, res) => {
   const printer = db.getPrinterById(req.params.id);
-  if (!printer || !printer.active) return res.status(404).json({ error: "Printer not found" });
+  if (!printer || !printer.active || printer.deleted_at) {
+    return res.status(404).json({ error: "Printer not found" });
+  }
   return res.json({ printer_id: printer.id, name: printer.name, stats: db.getStats(printer.id) });
 });
 

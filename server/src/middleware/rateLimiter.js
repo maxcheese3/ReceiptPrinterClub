@@ -1,16 +1,29 @@
 /**
  * Rate limiting.
  *
- * - Printer clients (authenticated with X-API-Key) are NEVER rate limited.
- * - Web/API message submissions are rate limited per IP with progressive tiers:
- *     Normal:  10 messages / 60s
- *     Abusive: 10-min cooling period at 3 messages / 60s
+ * - Requests carrying a VALID printer API key are exempt from the broad API
+ *   limiter (so polling is never throttled). An arbitrary/forged X-API-Key
+ *   header must NOT bypass limits — only a key that resolves to a printer does.
+ * - Message submissions get a stricter per-IP tier with a cooling period.
+ *   Integrations with a valid key get a higher ceiling (but are still capped):
+ *     Normal (no key):      10 messages / 60s
+ *     Valid API key:        120 messages / 60s
+ *     Abusive:              10-minute cooling period (no submissions)
+ * - Admin login and printer registration have their own tight limits.
  */
 
-const WINDOW_MS   = parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000", 10);
-const BURST_MAX   = 10;
-const COOLING_MAX = 3;
-const COOLING_MS  = 10 * 60 * 1000;
+const rateLimit = require("express-rate-limit");
+const db        = require("../db");
+
+function positiveInt(value, fallback) {
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+const WINDOW_MS  = positiveInt(process.env.RATE_LIMIT_WINDOW_MS, 60000);
+const BURST_MAX  = 10;
+const AUTOMATION_BURST_MAX = positiveInt(process.env.AUTOMATION_MESSAGE_RATE_MAX, 120);
+const COOLING_MS = 10 * 60 * 1000;
 
 const coolingIPs    = new Map(); // ip → expiry
 const burstCounters = new Map(); // ip → { count, windowStart }
@@ -22,7 +35,7 @@ function isInCooling(ip) {
   return true;
 }
 
-function recordAndCheck(ip) {
+function recordAndCheck(ip, max) {
   const now = Date.now();
   if (isInCooling(ip)) return "cooling";
 
@@ -31,7 +44,7 @@ function recordAndCheck(ip) {
   c.count++;
   burstCounters.set(ip, c);
 
-  if (c.count > BURST_MAX) {
+  if (c.count > max) {
     coolingIPs.set(ip, now + COOLING_MS);
     burstCounters.delete(ip);
     return "cooling";
@@ -39,16 +52,49 @@ function recordAndCheck(ip) {
   return "ok";
 }
 
-// Only applied to POST /api/messages — skips authenticated printer clients
+// Periodically drop expired entries so a stream of unique IPs cannot grow the
+// maps without bound.
+const sweepTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [ip, exp] of coolingIPs) {
+    if (now > exp) coolingIPs.delete(ip);
+  }
+  for (const [ip, c] of burstCounters) {
+    if (now - c.windowStart > WINDOW_MS * 2) burstCounters.delete(ip);
+  }
+}, 60 * 1000);
+if (typeof sweepTimer.unref === "function") sweepTimer.unref();
+
+function hasValidApiKey(req) {
+  const key = req.headers["x-api-key"];
+  return !!(key && db.getPrinterByApiKey(key));
+}
+
+// Applied to every /api route. Valid printer clients (which poll every few
+// seconds) are exempt; everything else is capped per IP.
+const apiLimiter = rateLimit({
+  windowMs: WINDOW_MS,
+  limit:    positiveInt(process.env.API_RATE_LIMIT_MAX, 300),
+  standardHeaders: "draft-7",
+  legacyHeaders:   false,
+  skip: hasValidApiKey,
+  message: { error: "Too many requests. Please slow down." },
+});
+
+// Only applied to POST /api/messages. A valid API key raises the ceiling but
+// does not remove it — registration is public, so "has a key" cannot mean
+// "unlimited".
 function messageLimiter(req, res, next) {
-  // Printer clients authenticate with X-API-Key — never rate limit them
-  if (req.headers["x-api-key"]) return next();
+  const max = hasValidApiKey(req) ? AUTOMATION_BURST_MAX : BURST_MAX;
 
   const ip = req.ip || req.socket.remoteAddress || "unknown";
-  const result = recordAndCheck(ip);
+  // Separate buckets so automation traffic and anonymous traffic from the same
+  // NAT address do not consume each other's allowance.
+  const bucket = `${ip}:${max}`;
+  const result = recordAndCheck(bucket, max);
 
   if (result === "cooling") {
-    const exp = coolingIPs.get(ip);
+    const exp = coolingIPs.get(bucket);
     const secsLeft = exp ? Math.ceil((exp - Date.now()) / 1000) : 600;
     res.setHeader("Retry-After", secsLeft);
     return res.status(429).json({
@@ -56,15 +102,32 @@ function messageLimiter(req, res, next) {
     });
   }
 
-  const c = burstCounters.get(ip);
+  const c = burstCounters.get(bucket);
   if (c) {
-    res.setHeader("X-RateLimit-Limit",     BURST_MAX);
-    res.setHeader("X-RateLimit-Remaining", Math.max(0, BURST_MAX - c.count));
+    res.setHeader("X-RateLimit-Limit",     max);
+    res.setHeader("X-RateLimit-Remaining", Math.max(0, max - c.count));
   }
   next();
 }
 
-// No blanket API limiter — was causing false positives on poll endpoint
-function apiLimiter(_req, _res, next) { next(); }
+// Failed admin logins only. Successful logins do not count.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit:    positiveInt(process.env.ADMIN_LOGIN_RATE_LIMIT_MAX, 10),
+  standardHeaders: "draft-7",
+  legacyHeaders:   false,
+  skipSuccessfulRequests: true,
+  message: { error: "Too many login attempts. Try again later." },
+});
 
-module.exports = { apiLimiter, messageLimiter };
+// Printer registration is open to the public, so cap it per IP to prevent
+// directory/database flooding.
+const registrationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit:    positiveInt(process.env.REGISTRATION_RATE_LIMIT_MAX, 5),
+  standardHeaders: "draft-7",
+  legacyHeaders:   false,
+  message: { error: "Too many printer registrations from this address. Try again later." },
+});
+
+module.exports = { apiLimiter, messageLimiter, loginLimiter, registrationLimiter };

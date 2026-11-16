@@ -1,6 +1,6 @@
 {
   "name": "printbridge-client",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "PrintBridge Print Client (Windows, macOS, Linux)",
   "main": "client.js",
   "scripts": {
