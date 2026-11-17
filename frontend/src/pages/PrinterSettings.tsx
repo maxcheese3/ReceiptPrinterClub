@@ -3,10 +3,49 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { usePrinterAuth } from '../contexts/PrinterAuthContext';
 import PrinterPageLayout from '../components/PrinterPageLayout';
 import type { Printer } from '../types/api';
-import { WIDTH_PRESETS, SIZE_STEPS, colsFor, dotsForCols, normalCols } from '../lib/printerGeometry';
+import { WIDTH_PRESETS, dotsForCols, normalCols } from '../lib/printerGeometry';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
+
+// A row of buttons where exactly one is selected — the same control as the
+// message history tabs.
+function Toggle<T extends string | number | boolean>({ value, options, onChange, labelledBy, disabled }: {
+  value: T;
+  options: { value: T; label: string; title?: string }[];
+  onChange: (value: T) => void;
+  labelledBy: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="pa-view-toggle settings-toggle" role="group" aria-labelledby={labelledBy}>
+      {options.map((o) => (
+        <button
+          key={String(o.value)}
+          type="button"
+          className={`pa-view-btn${value === o.value ? ' active' : ''}`}
+          aria-pressed={value === o.value}
+          title={o.title}
+          disabled={disabled}
+          onClick={() => onChange(o.value)}
+        >{o.label}</button>
+      ))}
+    </div>
+  );
+}
+
+// True when a client version is at least `min` (numeric x.y.z). An unknown
+// (null) version is an old client.
+function clientAtLeast(version: string | null | undefined, min: string): boolean {
+  if (!version) return false;
+  const a = version.split('.').map((n) => parseInt(n, 10) || 0);
+  const b = min.split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  }
+  return true;
+}
 
 export default function PrinterSettings() {
-  const { apiKey, printer, authFetch, refreshPrinter, logout } = usePrinterAuth();
+  const { apiKey, printer, printerStats, authFetch, refreshPrinter, logout } = usePrinterAuth();
   const navigate = useNavigate();
 
   const [paName, setPaName] = useState('');
@@ -17,8 +56,18 @@ export default function PrinterSettings() {
   // "Other" is selected when the saved width isn't one of the common ones.
   const [paOtherCols, setPaOtherCols] = useState(false);
   const [paEmojiMode, setPaEmojiMode] = useState<'glyph' | 'text'>('glyph');
+  const [paImageCut, setPaImageCut] = useState<'same' | 'separate'>('separate');
+  const [paListed, setPaListed] = useState(true);
   const [settingsFeedback, setSettingsFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Printing (on / paused) and Status (active / inactive) apply as soon as
+  // they're clicked. These follow the saved values, and change ahead of the
+  // request so the toggle moves straight away.
+  const [paused, setPaused] = useState(false);
+  const [active, setActive] = useState(true);
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   // Management state
   const [busy, setBusy] = useState(false);
@@ -31,52 +80,72 @@ export default function PrinterSettings() {
   const [testPageBusy, setTestPageBusy] = useState(false);
   const [testPageFeedback, setTestPageFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
+  // Fills the Settings form from the saved printer: on first load and after
+  // Save, but not on every refresh. The Printing and Status toggles re-read the
+  // printer too (and so does the refresh every 15 seconds while paused), and
+  // that mustn't wipe edits that haven't been saved yet.
+  function loadForm(p: Printer) {
+    setPaName(p.name);
+    setPaDesc(p.description ?? '');
+    setPaLocation(p.location ?? '');
+    const preset = WIDTH_PRESETS.find((w) => w.dots === p.print_width_dots);
+    setPaCols(preset ? preset.cols : normalCols(p.print_width_dots));
+    setPaOtherCols(!preset);
+    setPaEmojiMode(p.emoji_mode === 'text' ? 'text' : 'glyph');
+    setPaImageCut(p.image_cut === 'same' ? 'same' : 'separate');
+    setPaListed(!p.hidden);
+  }
+
+  useEffect(() => {
+    if (printer) loadForm(printer);
+  }, [printer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!printer) return;
-    setPaName(printer.name);
-    setPaDesc(printer.description ?? '');
-    setPaLocation(printer.location ?? '');
-    const preset = WIDTH_PRESETS.find((p) => p.dots === printer.print_width_dots);
-    setPaCols(preset ? preset.cols : normalCols(printer.print_width_dots));
-    setPaOtherCols(!preset);
-    setPaEmojiMode(printer.emoji_mode === 'text' ? 'text' : 'glyph');
+    // SQLite stores booleans as integers, so the API returns active/hidden/paused
+    // as 0 or 1. Compare by truthiness — `active !== false` is true for the
+    // number 0, which once left deactivated printers showing as Active.
+    setPaused(!!printer.paused);
+    setActive(!!printer.active);
   }, [printer]);
 
-  async function patchPrinter(body: Record<string, unknown>, successMsg: string) {
-    setMgmtFeedback(null);
-    setBusy(true);
+  // Keeps the "messages waiting" count current while paused.
+  useAutoRefresh(refreshPrinter, 15_000, paused);
+  const waiting = printerStats?.pending ?? 0;
+
+  async function patchStatus(fields: { paused: boolean } | { active: boolean }, revert: () => void) {
+    setStatusError(null);
+    setStatusBusy(true);
     try {
       const res = await authFetch('/api/printer-admin/me', {
         method: 'PATCH',
-        body: JSON.stringify(body),
+        body: JSON.stringify(fields),
       });
       const data = await res.json() as { success: boolean; error?: string };
       if (res.ok && data.success) {
         refreshPrinter();
-        setMgmtFeedback({ type: 'success', msg: successMsg });
       } else {
-        setMgmtFeedback({ type: 'error', msg: data.error ?? 'Update failed.' });
+        revert();
+        setStatusError(data.error ?? 'Update failed.');
       }
     } catch (err) {
-      setMgmtFeedback({ type: 'error', msg: (err as Error).message });
+      revert();
+      setStatusError((err as Error).message);
     } finally {
-      setBusy(false);
+      setStatusBusy(false);
     }
   }
 
-  // SQLite stores booleans as integers, so the API returns active/hidden as 0 or 1
-  // (not true/false). Compare by truthiness — `active !== false` would always be
-  // true for the number 0, which previously left deactivated printers showing as
-  // "Active" with no way to reactivate them.
-  const isHidden = !!printer?.hidden;
-  const isActive = !!printer?.active;
-
-  function toggleHidden() {
-    patchPrinter({ hidden: !isHidden }, !isHidden ? 'Printer hidden from the directory.' : 'Printer is now visible in the directory.');
+  function changePaused(next: boolean) {
+    if (next === paused) return;
+    setPaused(next);
+    patchStatus({ paused: next }, () => setPaused(!next));
   }
 
-  function toggleActive() {
-    patchPrinter({ active: !isActive }, !isActive ? 'Printer reactivated.' : 'Printer deactivated.');
+  function changeActive(next: boolean) {
+    if (next === active) return;
+    setActive(next);
+    patchStatus({ active: next }, () => setActive(!next));
   }
 
   async function handleDelete() {
@@ -115,10 +184,13 @@ export default function PrinterSettings() {
           location: paLocation.trim(),
           print_width_dots: dotsForCols(paCols),
           emoji_mode: paEmojiMode,
+          image_cut: paImageCut,
+          hidden: !paListed,
         }),
       });
       const data = await res.json() as { success: boolean; printer?: Printer; error?: string };
       if (res.ok && data.success) {
+        if (data.printer) loadForm(data.printer);
         refreshPrinter();
         setSettingsFeedback({ type: 'success', msg: 'Saved' });
       } else {
@@ -138,7 +210,12 @@ export default function PrinterSettings() {
       const res = await authFetch('/api/printer-admin/test-page', { method: 'POST' });
       const data = await res.json() as { success?: boolean; error?: string };
       if (res.ok && data.success) {
-        setTestPageFeedback({ type: 'success', msg: 'Test page queued — it prints the next time your printer checks in.' });
+        setTestPageFeedback({
+          type: 'success',
+          msg: paused
+            ? 'Test page queued. Printing is paused, so it prints when you switch Printing back on.'
+            : 'Test page queued — it prints the next time your printer checks in.',
+        });
       } else {
         setTestPageFeedback({ type: 'error', msg: data.error ?? 'Could not queue a test page.' });
       }
@@ -173,70 +250,73 @@ export default function PrinterSettings() {
             <input type="text" id="pa-location" maxLength={100} value={paLocation} onChange={(e) => setPaLocation(e.target.value)} />
           </div>
           <div className="field" style={{ marginBottom: 0 }}>
-            <label><span className="label-text">Characters per line</span></label>
-            <div className="paper-width-options">
-              {WIDTH_PRESETS.map((preset) => (
-                <label key={preset.cols} className="paper-width-option">
-                  <input
-                    type="radio"
-                    name="pa-width"
-                    checked={!paOtherCols && paCols === preset.cols}
-                    onChange={() => { setPaOtherCols(false); setPaCols(preset.cols); }}
-                  />
-                  <span className="paper-width-label">
-                    <strong>{preset.cols}</strong>
-                    <span className="paper-width-hint">{preset.hint}</span>
-                  </span>
-                </label>
-              ))}
-              <label className="paper-width-option">
+            <span className="label-text" id="pa-width-label">Characters per line</span>
+            <div className="settings-inline">
+              <Toggle
+                labelledBy="pa-width-label"
+                value={paOtherCols ? 'other' : paCols}
+                options={[
+                  ...WIDTH_PRESETS.map((p) => ({ value: p.cols, label: String(p.cols), title: p.hint })),
+                  { value: 'other' as const, label: 'Other' },
+                ]}
+                onChange={(v) => {
+                  if (v === 'other') { setPaOtherCols(true); return; }
+                  setPaOtherCols(false);
+                  setPaCols(v);
+                }}
+              />
+              {paOtherCols && (
                 <input
-                  type="radio"
-                  name="pa-width"
-                  checked={paOtherCols}
-                  onChange={() => setPaOtherCols(true)}
+                  type="number"
+                  aria-label="Characters per line"
+                  min={11}
+                  max={85}
+                  value={paCols}
+                  onChange={(e) => setPaCols(Number(e.target.value))}
                 />
-                <span className="paper-width-label">
-                  <strong>Other</strong>
-                  <span className="paper-width-hint">
-                    {paOtherCols ? (
-                      <input
-                        type="number"
-                        aria-label="Characters per line"
-                        min={11}
-                        max={85}
-                        style={{ width: 70 }}
-                        value={paCols}
-                        onChange={(e) => setPaCols(Number(e.target.value))}
-                      />
-                    ) : 'If your test page shows a different number'}
-                  </span>
-                </span>
-              </label>
+              )}
             </div>
-            <span className="label-hint">
-              Not sure? Print a test page below and use the last number on the first ruler line.
-              {' '}At each size: {SIZE_STEPS.map((s) => `${s.name} ${colsFor(dotsForCols(paCols), s.pt)}`).join(' · ')}
-            </span>
+            <span className="label-hint">32: most 58mm · 48: most 80mm. The test page shows yours.</span>
           </div>
           <div className="field" style={{ marginBottom: 0 }}>
-            <label><span className="label-text">Emoji</span></label>
-            <div className="paper-width-options">
-              <label className="paper-width-option">
-                <input type="radio" name="pa-emoji" checked={paEmojiMode === 'glyph'} onChange={() => setPaEmojiMode('glyph')} />
-                <span className="paper-width-label">
-                  <strong>Pictures</strong>
-                  <span className="paper-width-hint">Small black-and-white emoji, if your printer supports custom characters</span>
-                </span>
-              </label>
-              <label className="paper-width-option">
-                <input type="radio" name="pa-emoji" checked={paEmojiMode === 'text'} onChange={() => setPaEmojiMode('text')} />
-                <span className="paper-width-label">
-                  <strong>Text</strong>
-                  <span className="paper-width-hint">Stand-ins like &lt;3 and :D — works on every printer</span>
-                </span>
-              </label>
-            </div>
+            <span className="label-text" id="pa-emoji-label">Emoji</span>
+            <Toggle
+              labelledBy="pa-emoji-label"
+              value={paEmojiMode}
+              options={[
+                { value: 'glyph' as const, label: 'Pictures' },
+                { value: 'text' as const, label: 'Text', title: 'Stand-ins like <3 and :D' },
+              ]}
+              onChange={setPaEmojiMode}
+            />
+          </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <span className="label-text" id="pa-image-cut-label">Images</span>
+            <Toggle
+              labelledBy="pa-image-cut-label"
+              value={paImageCut}
+              options={[
+                { value: 'same' as const, label: 'Same receipt' },
+                { value: 'separate' as const, label: 'Separate receipt', title: 'The image prints on its own, with its own cut' },
+              ]}
+              onChange={setPaImageCut}
+            />
+            {paImageCut === 'separate' && printer?.last_seen && !clientAtLeast(printer.client_version, '4.1.0') && (
+              <span className="label-hint">Needs print client 4.1.0 — yours is {printer.client_version ?? 'older'}.</span>
+            )}
+          </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <span className="label-text" id="pa-listed-label">Printer Directory</span>
+            <Toggle
+              labelledBy="pa-listed-label"
+              value={paListed}
+              options={[
+                { value: true, label: 'Listed' },
+                { value: false, label: 'Hidden' },
+              ]}
+              onChange={setPaListed}
+            />
+            {!paListed && <span className="label-hint">Anyone with a direct link can still send to it.</span>}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16 }}>
             <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
@@ -249,31 +329,6 @@ export default function PrinterSettings() {
             )}
           </div>
         </form>
-      </div>
-
-      {/* ── Test page ──────────────────────────────────────────────────────── */}
-      <div className="admin-section">
-        <div className="admin-section-header"><h2>Test Page</h2></div>
-        <div className="mgmt-list">
-          <div className="mgmt-row">
-            <div className="mgmt-row-text">
-              <div className="mgmt-row-title">Check your printer</div>
-              <div className="mgmt-row-desc">
-                Prints rulers to confirm the paper width, a sample of every size and
-                style, and an emoji row so you can choose Pictures or Text above.
-                Save any changes first.
-              </div>
-            </div>
-            <button type="button" className="btn btn-sm btn-outline" onClick={handleTestPage} disabled={testPageBusy}>
-              {testPageBusy ? 'Queuing…' : 'Print test page'}
-            </button>
-          </div>
-          {testPageFeedback && (
-            <div className={`feedback ${testPageFeedback.type}`} style={{ margin: '4px 0 0', padding: '6px 10px', fontSize: 12 }}>
-              {testPageFeedback.msg}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* ── Printer Management ─────────────────────────────────────────────── */}
@@ -298,51 +353,73 @@ export default function PrinterSettings() {
             </div>
           </div>
 
-          {/* Hide */}
+          {/* Test page */}
           <div className="mgmt-row">
             <div className="mgmt-row-text">
-              <div className="mgmt-row-title">Directory visibility</div>
+              <div className="mgmt-row-title">Test page</div>
               <div className="mgmt-row-desc">
-                {isHidden
-                  ? 'Your printer is hidden. It won’t appear in the public directory, but people with a direct link can still send to it.'
-                  : 'Your printer is listed in the public directory for anyone to find.'}
+                Prints rulers to confirm the paper width, a sample of every size and
+                style, and an emoji row so you can choose Pictures or Text above.
+                Save any changes first.
               </div>
             </div>
-            <button
-              type="button"
-              className={`btn btn-sm ${isHidden ? 'btn-primary' : 'btn-outline'}`}
-              onClick={toggleHidden}
-              disabled={busy}
-            >
-              {isHidden ? 'Show in directory' : 'Hide from directory'}
+            <button type="button" className="btn btn-sm btn-outline" onClick={handleTestPage} disabled={testPageBusy}>
+              {testPageBusy ? 'Queuing…' : 'Print test page'}
             </button>
           </div>
+          {testPageFeedback && (
+            <div className={`feedback ${testPageFeedback.type}`} style={{ margin: '4px 0 0', padding: '6px 10px', fontSize: 12 }}>
+              {testPageFeedback.msg}
+            </div>
+          )}
 
-          {/* Deactivate */}
+          {/* Pause: messages wait on the server and the printer shows as offline */}
           <div className="mgmt-row">
             <div className="mgmt-row-text">
-              <div className="mgmt-row-title">
-                Status: <span className={isActive ? 'mgmt-status-on' : 'mgmt-status-off'}>{isActive ? 'Active' : 'Inactive'}</span>
-              </div>
+              <div className="mgmt-row-title" id="pa-paused-label">Printing</div>
               <div className="mgmt-row-desc">
-                {isActive
-                  ? 'Your printer is active and can receive messages.'
-                  : 'Your printer is deactivated. It won’t receive new messages and is hidden from the directory until reactivated.'}
+                {paused
+                  ? `Paused — ${waiting === 0 ? 'nothing' : waiting === 1 ? '1 message' : `${waiting} messages`} waiting. Your printer shows as offline. Everything waiting prints in order when you switch back on.`
+                  : 'Pause to hold messages on the server. Your printer shows as offline until you switch back on.'}
               </div>
             </div>
-            <button
-              type="button"
-              className={`btn btn-sm ${isActive ? 'btn-outline' : 'btn-primary'}`}
-              onClick={toggleActive}
-              disabled={busy}
-            >
-              {isActive ? 'Deactivate' : 'Reactivate'}
-            </button>
+            <Toggle
+              labelledBy="pa-paused-label"
+              value={paused}
+              options={[
+                { value: false, label: 'On' },
+                { value: true, label: 'Paused' },
+              ]}
+              onChange={changePaused}
+              disabled={statusBusy}
+            />
           </div>
 
-          {mgmtFeedback && (
-            <div className={`feedback ${mgmtFeedback.type}`} style={{ margin: '4px 0 0', padding: '6px 10px', fontSize: 12 }}>
-              {mgmtFeedback.msg}
+          {/* Status: an inactive printer turns new messages away */}
+          <div className="mgmt-row">
+            <div className="mgmt-row-text">
+              <div className="mgmt-row-title" id="pa-active-label">Status</div>
+              <div className="mgmt-row-desc">
+                {active
+                  ? 'People can send to your printer.'
+                  : 'Won’t receive messages or appear in the directory.'}
+              </div>
+            </div>
+            <Toggle
+              labelledBy="pa-active-label"
+              value={active}
+              options={[
+                { value: true, label: 'Active' },
+                { value: false, label: 'Inactive' },
+              ]}
+              onChange={changeActive}
+              disabled={statusBusy}
+            />
+          </div>
+
+          {statusError && (
+            <div className="feedback error" style={{ margin: '4px 0 0', padding: '6px 10px', fontSize: 12 }}>
+              {statusError}
             </div>
           )}
         </div>

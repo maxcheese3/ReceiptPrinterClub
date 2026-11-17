@@ -4,7 +4,7 @@
  * the ability to update their printer settings.
  *
  * GET    /api/printer-admin/me           — printer info
- * PATCH  /api/printer-admin/me           — update name/description/location/printer width/emoji mode
+ * PATCH  /api/printer-admin/me           — update name/description/location/printer width/emoji mode/image cut/paused
  * POST   /api/printer-admin/test-page    — queue a calibration test page to this printer
  * GET    /api/printer-admin/messages     — all messages RECEIVED (paginated, optional ?sender filter)
  * GET    /api/printer-admin/threads      — conversations (two-sided with printers, one-sided from guests)
@@ -18,7 +18,7 @@
 const express        = require("express");
 const { v4: uuidv4 } = require("uuid");
 const db             = require("../db");
-const { normalizeWidthDots, normalizeEmojiMode } = require("../lib/printerWidth");
+const { normalizeWidthDots, normalizeEmojiMode, normalizeImageCut } = require("../lib/printerWidth");
 
 const router  = express.Router();
 
@@ -40,7 +40,7 @@ router.get("/me", requireApiKey, (req, res) => {
 // ── PATCH /api/printer-admin/me ───────────────────────────────────────────────
 router.patch("/me", requireApiKey, (req, res) => {
   const p = req.printer;
-  const { name, description, location, print_width_dots, emoji_mode, active, hidden } = req.body;
+  const { name, description, location, print_width_dots, emoji_mode, image_cut, active, hidden, paused } = req.body;
 
   // Name uniqueness check
   if (name && name.trim() !== p.name) {
@@ -54,9 +54,11 @@ router.patch("/me", requireApiKey, (req, res) => {
     location:    location    !== undefined ? (location.trim()    || null)                        : p.location,
     print_width_dots: normalizeWidthDots(print_width_dots) ?? p.print_width_dots,
     emoji_mode:       normalizeEmojiMode(emoji_mode)       ?? p.emoji_mode,
+    image_cut:        normalizeImageCut(image_cut)         ?? p.image_cut,
     active:      active      !== undefined ? (active ? 1 : 0)                                    : p.active,
     hidden:      hidden      !== undefined ? (hidden ? 1 : 0)                                    : (p.hidden || 0),
   });
+  if (paused !== undefined) db.setPrinterPaused(p.id, !!paused);
 
   return res.json({ success: true, printer: db.printerInfo(db.getPrinterById(p.id)) });
 });

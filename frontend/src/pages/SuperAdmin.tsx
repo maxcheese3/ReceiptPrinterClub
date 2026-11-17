@@ -12,8 +12,10 @@ interface AdminPrinter {
   location?: string;
   print_width_dots: number;
   emoji_mode: 'glyph' | 'text';
+  image_cut: 'same' | 'separate';
   active: boolean | number;
   hidden: boolean | number;
+  paused?: boolean | number;
   last_seen?: string;
   client_version?: string | null;
 }
@@ -153,7 +155,7 @@ export default function SuperAdmin({ onOpenModal }: SuperAdminProps) {
                 <thead>
                   <tr>
                     <th>Name</th><th>Description</th><th>Location</th>
-                    <th>Chars/line</th><th>Emoji</th><th>Status</th><th>Visible</th><th>Last Seen</th><th>Client</th><th>Actions</th>
+                    <th>Chars/line</th><th>Emoji</th><th>Images</th><th>Status</th><th>Visible</th><th>Last Seen</th><th>Client</th><th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -264,6 +266,7 @@ function PrinterRow({ printer: p, saving, lastSeenLabel, onSave, onDelete, onTog
   const [location, setLocation] = useState(p.location ?? '');
   const [cols, setCols] = useState(normalCols(p.print_width_dots));
   const [emojiMode, setEmojiMode] = useState(p.emoji_mode);
+  const [imageCut, setImageCut] = useState(p.image_cut);
 
   return (
     <tr className={!p.active ? 'inactive' : ''}>
@@ -293,9 +296,25 @@ function PrinterRow({ printer: p, saving, lastSeenLabel, onSave, onDelete, onTog
         </select>
       </td>
       <td>
+        <select
+          className="admin-inline-select"
+          value={imageCut}
+          onChange={(e) => setImageCut(e.target.value as 'same' | 'separate')}
+          title="Same receipt as the text, or a separate receipt with its own cut"
+        >
+          <option value="same">Same</option>
+          <option value="separate">Separate</option>
+        </select>
+      </td>
+      <td>
         <span className={`status-badge ${p.active ? 'status-printed' : 'status-failed'}`}>
           {p.active ? 'Active' : 'Inactive'}
         </span>
+        {!!p.paused && (
+          <span className="status-badge status-pending" style={{ marginLeft: 4 }} title="Paused by its owner — messages wait on the server">
+            Paused
+          </span>
+        )}
       </td>
       <td>
         <span className={`status-badge ${p.hidden ? 'status-failed' : 'status-printed'}`}>
@@ -308,7 +327,7 @@ function PrinterRow({ printer: p, saving, lastSeenLabel, onSave, onDelete, onTog
         <button
           className="btn btn-sm btn-save"
           disabled={saving}
-          onClick={() => onSave({ name, description, location, print_width_dots: dotsForCols(cols), emoji_mode: emojiMode })}
+          onClick={() => onSave({ name, description, location, print_width_dots: dotsForCols(cols), emoji_mode: emojiMode, image_cut: imageCut })}
         >
           {saving ? '…' : 'Save'}
         </button>

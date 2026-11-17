@@ -4,8 +4,9 @@
  * Used on every OS and every connection type, so a message prints the same
  * whether it goes to /dev/usb/lp0, a CUPS queue, or a Windows printer.
  *
- * One job per message: init, emoji definitions, every line, any image, then a
- * single feed + cut.
+ * One job per receipt: init, emoji definitions, every line, any image, then a
+ * single feed + cut. A message is one receipt unless its printer prints images
+ * on a separate receipt (layout.buildJobs).
  */
 
 "use strict";

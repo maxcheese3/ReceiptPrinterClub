@@ -444,15 +444,21 @@ router.get("/poll", (req, res) => {
   if (!printer) return res.status(403).json({ error: "Invalid API key" });
 
   db.updatePrinterLastSeen(printer.id, clientVersion(req));
-  const messages = db.getPendingMessages(printer.id);
+  // Paused on My Printer: hand out nothing. Messages stay 'pending' and the
+  // whole backlog goes out, oldest first, on the first poll after resuming.
+  const paused = !!printer.paused;
+  const messages = paused ? [] : db.getPendingMessages(printer.id);
   for (const m of messages) db.setMessageStatus(m.id, "printing");
 
-  // The client takes its printer width and emoji mode from here on every poll, so
-  // changes made on the My Printer page apply without touching the client.
+  // The client takes its printer width, emoji mode and image cut from here on
+  // every poll, so changes made on the My Printer page apply without touching
+  // the client.
   return res.json({
     printer_id:       printer.id,
     print_width_dots: printer.print_width_dots,
     emoji_mode:       printer.emoji_mode,
+    image_cut:        printer.image_cut,
+    paused,
     messages,
   });
 });

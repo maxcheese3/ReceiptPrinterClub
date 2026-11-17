@@ -7,6 +7,8 @@ export interface Printer {
   print_width_dots: number;
   /** How the printer shows emoji: custom pictures, or text stand-ins like <3. */
   emoji_mode?: 'glyph' | 'text';
+  /** Where a message's image prints: on the same receipt as the text, or its own receipt with its own cut. */
+  image_cut?: 'same' | 'separate';
   /** Print client version from its last poll; null with a last_seen means an old client. */
   client_version?: string | null;
   last_seen?: string;
@@ -14,6 +16,8 @@ export interface Printer {
   active?: number | boolean;
   /** SQLite integer boolean: 0 or 1. Always test by truthiness, never `=== false`. */
   hidden?: number | boolean;
+  /** Printing paused by the owner: messages wait on the server and the printer shows as offline. 0 or 1. */
+  paused?: number | boolean;
 }
 
 export interface Message {

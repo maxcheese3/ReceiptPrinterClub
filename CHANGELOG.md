@@ -7,6 +7,28 @@ Versions correspond to feature branches merged into the refactor lineage.
 
 ---
 
+## [4.1.0] - 2026-11-17 — `feat/separate-image-cut`
+
+### Added
+
+- **Images on a separate receipt** — a new Images setting on My Printer: **Separate receipt** (the default) prints the text receipt, cuts, then prints the image on a receipt of its own and cuts again; **Same receipt** prints a message's text and image together with one cut, as in 4.0. A message that's only an image prints its From/Time block, a cut, then the image. Existing printers switch to Separate when the server is updated, but keep printing text and image together until their client is updated to 4.1.0. The client picks the setting up on its next poll and logs it with the other printer settings. Needs print client 4.1.0. Super Admin can set it too.
+- **Pause printing** — a Printing toggle (On / Paused) under Printer Management on My Printer. While paused, the client keeps checking in but the server sends it nothing: messages (feed items and test pages included) wait on the server, and the printer shows as offline in the directory, the online count and the send page straight away. Switching back to On prints everything waiting, oldest first, on the client's next check-in. My Printer shows how many messages are waiting, and Super Admin shows a Paused badge. Print client 4.1.0 logs when printing is paused or resumed; older clients just receive nothing while paused.
+
+### Fixed
+
+- **Paper width options on the Register page** showed each option's name under its radio button instead of beside it.
+
+### Changed
+
+- **My Printer settings** — Characters per line, Emoji and Images are compact toggles (like the message history tabs) instead of stacked cards, with most of the explanatory text removed. The Images setting warns only when Separate is picked and the printer's client is older than 4.1.0.
+- **Directory** moves from Printer Management into Settings as a Printer Directory (Listed / Hidden) toggle, saved with Save Settings. A one-line note appears only under Hidden.
+- **Status** (Active / Inactive) is a toggle in Printer Management, next to Printing, and applies on click. Printer Management now holds the print client version, the test page (no longer a section of its own), Printing, Status and Delete. Clicking Printing or Status no longer resets unsaved edits in the Settings form.
+- **Printer API responses** — `GET /api/messages/poll`, `GET`/`PATCH /api/printer-admin/me` and the Super Admin printer endpoints include `image_cut` (`same` | `separate`). Both `PATCH` endpoints accept it.
+- **My Printer header** shows the print client version ("Client 4.1.0" or "Old client", as on the directory cards) after the printer's name and location, on every My Printer page.
+- **`paused`** — `GET /api/printers`, `GET /api/messages/poll`, `GET`/`PATCH /api/printer-admin/me` and the Super Admin printer list include it, and `PATCH /api/printer-admin/me` accepts it. While it's set, the poll returns an empty `messages` list.
+
+---
+
 ## [4.0.1] - 2026-11-16 — `fix/printer-history-auth`
 
 ### Fixed

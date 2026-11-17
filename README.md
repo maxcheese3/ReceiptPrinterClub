@@ -181,6 +181,19 @@ emoji per message. Printers without that feature can switch to text stand-ins
 (`<3`, `:D`) on the My Printer page.
 A message of just 1 to 3 emoji prints at X-Large, whatever size was picked.
 
+**Images** print on a receipt of their own, after the text, with a cut
+between them. A message that's only an image prints its From/Time block, a
+cut, then the image. Set Images to **Same receipt** on the My Printer page to
+print text and image together with one cut. Separate receipts need print
+client 4.1.0 or later; older clients always print them together.
+
+**Pausing.** Set **Printing** to **Paused** under Printer Management on the
+My Printer page to stop printing without turning the client off. People can
+still send; messages wait on the server and the printer shows as offline. When
+you switch back to **On**, everything waiting prints in order. **Status:
+Inactive** is different: the printer leaves the directory and new messages are
+turned away.
+
 **Printers that ignore ESC/POS** (e.g. Star TSP100) can set `PRINT_MODE=driver`
 in the client's `.env` to print through the OS driver instead.
 
@@ -194,7 +207,7 @@ in the client's `.env` to print through the OS driver instead.
 | `/register` | Register a new printer |
 | `/docs` | REST API documentation |
 | `/myprinter/login` | Printer owner login (API key) |
-| `/myprinter` | Printer settings: characters per line, emoji style, test page |
+| `/myprinter` | Printer settings: characters per line, emoji style, images on the same or a separate receipt, test page |
 | `/myprinter/message-history` | Per-printer message history: All, Received, Sent and Threads tabs, refreshing every 15s |
 | `/myprinter/subscriptions` | RSS/Atom feed subscriptions |
 | `/admin/login` | Super admin login |
@@ -348,8 +361,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ### Client (`.env`)
 
-Characters per line and emoji style are **not** client settings — they're on
-the My Printer page and reach the client with every poll.
+Characters per line, emoji style and images on a separate receipt are **not**
+client settings — they're on the My Printer page and reach the client with
+every poll.
 
 | Variable          | Default                     | Description                       |
 |-------------------|-----------------------------|-----------------------------------|
@@ -432,7 +446,7 @@ receiptprinterclub/
 │   ├── src/
 │   │   ├── index.js                 # Express entry point
 │   │   ├── db/index.js              # SQLite access layer
-│   │   ├── lib/printerWidth.js      # Printer width + emoji mode validation
+│   │   ├── lib/printerWidth.js      # Printer width, emoji mode + image cut validation
 │   │   ├── lib/urlSafety.js         # SSRF guard for server-side fetches
 │   │   ├── middleware/
 │   │   │   ├── rateLimiter.js

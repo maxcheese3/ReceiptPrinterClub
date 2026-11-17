@@ -29,8 +29,17 @@ function normalizeEmojiMode(value) {
   return EMOJI_MODES.includes(value) ? value : null;
 }
 
+// Where a message's image prints: on the same receipt as the text, or on a
+// separate receipt with its own cut.
+const IMAGE_CUTS = ["same", "separate"];
+
+function normalizeImageCut(value) {
+  return IMAGE_CUTS.includes(value) ? value : null;
+}
+
 module.exports = {
   DEFAULT_WIDTH_DOTS,
   normalizeWidthDots,
   normalizeEmojiMode,
+  normalizeImageCut,
 };
