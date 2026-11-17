@@ -49,11 +49,14 @@ const log = {
 function ts() { return new Date().toISOString().replace("T", " ").slice(0, 19); }
 
 // ── Printer settings ──────────────────────────────────────────────────────────
-// Printer width and emoji mode are set on the My Printer page and arrive with
-// every poll, so changes apply without restarting the client.
-const printer = { widthDots: layout.DEFAULT_WIDTH_DOTS, emojiMode: "glyph" };
+// Printer width, emoji mode and image cut are set on the My Printer page and
+// arrive with every poll, so changes apply without restarting the client.
+const printer = { widthDots: layout.DEFAULT_WIDTH_DOTS, emojiMode: "glyph", imageCut: "same" };
 let warnedOldServer = false;
 let lastSettings = "";
+// Printing paused on the My Printer page: the server sends no messages until
+// it's switched back on. Tracked only to log the change once.
+let paused = false;
 
 function applySettings(data) {
   // LEGACY(old-client): only reachable while a server from before 4.0 is still
@@ -67,8 +70,11 @@ function applySettings(data) {
   }
   printer.widthDots = data.print_width_dots;
   printer.emojiMode = data.emoji_mode === "text" ? "text" : "glyph";
+  printer.imageCut  = data.image_cut === "separate" ? "separate" : "same";
   const cols = layout.colsFor(printer.widthDots, layout.SIZES[1]);
-  const summary = `${cols} characters per line (${printer.widthDots} dots), emoji: ${printer.emojiMode === "text" ? "text" : "pictures"}`;
+  const summary = `${cols} characters per line (${printer.widthDots} dots), ` +
+    `emoji: ${printer.emojiMode === "text" ? "text" : "pictures"}, ` +
+    `images: ${printer.imageCut === "separate" ? "separate receipt" : "same receipt"}`;
   if (summary !== lastSettings) log.info(`[settings] ${summary}`);
   lastSettings = summary;
 }
@@ -85,6 +91,12 @@ const http = axios.create({
 async function pollMessages() {
   const { data } = await http.get("/api/messages/poll");
   applySettings(data);
+  if (!!data.paused !== paused) {
+    paused = !!data.paused;
+    log.info(paused
+      ? "[paused] Printing is paused on the My Printer page. Messages wait on the server until it's switched back on."
+      : "[paused] Printing resumed.");
+  }
   return data.messages || [];
 }
 async function reportStatus(id, status, error = null) {
@@ -168,10 +180,13 @@ async function processMessage(message) {
     // Archive before printing so we have a copy even if print fails
     await archiveMessage(message, imageBuffer);
 
-    const model = message.kind === "test_page"
-      ? layout.buildTestPage({ widthDots: printer.widthDots })
-      : layout.buildReceipt(message, { widthDots: printer.widthDots, emojiMode: emojiMode(), wrap, imageBuffer });
-    await printModel(model);
+    // Usually one receipt; two when the image prints on a separate receipt.
+    const jobs = message.kind === "test_page"
+      ? [layout.buildTestPage({ widthDots: printer.widthDots })]
+      : layout.buildJobs(message, {
+          widthDots: printer.widthDots, emojiMode: emojiMode(), wrap, imageBuffer, imageCut: printer.imageCut,
+        });
+    for (const model of jobs) await printModel(model);
 
     await reportStatus(message.id, "printed");
     log.info(`  ✓ Message ${message.id} printed`);

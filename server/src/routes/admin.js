@@ -12,7 +12,7 @@
 const express = require("express");
 const crypto  = require("crypto");
 const db      = require("../db");
-const { normalizeWidthDots, normalizeEmojiMode } = require("../lib/printerWidth");
+const { normalizeWidthDots, normalizeEmojiMode, normalizeImageCut } = require("../lib/printerWidth");
 const { loginLimiter } = require("../middleware/rateLimiter");
 
 const router = express.Router();
@@ -112,7 +112,7 @@ router.patch("/printers/:id", requireAuth, (req, res) => {
   const printer = db.getPrinterById(req.params.id);
   if (!printer) return res.status(404).json({ error: "Printer not found" });
 
-  const { name, description, location, print_width_dots, emoji_mode, active, hidden } = req.body;
+  const { name, description, location, print_width_dots, emoji_mode, image_cut, active, hidden } = req.body;
 
   if (name && name.trim() !== printer.name) {
     const dup = db.listPrinters(false).find(p => p.name === name.trim() && p.id !== printer.id);
@@ -125,6 +125,7 @@ router.patch("/printers/:id", requireAuth, (req, res) => {
     location:    location    !== undefined ? (location.trim()    || null)                       : printer.location,
     print_width_dots: normalizeWidthDots(print_width_dots) ?? printer.print_width_dots,
     emoji_mode:       normalizeEmojiMode(emoji_mode)       ?? printer.emoji_mode,
+    image_cut:        normalizeImageCut(image_cut)         ?? printer.image_cut,
     active:      active      !== undefined ? (active ? 1 : 0)                                   : printer.active,
     hidden:      hidden      !== undefined ? (hidden ? 1 : 0)                                   : (printer.hidden || 0),
   });

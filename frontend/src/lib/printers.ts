@@ -19,6 +19,11 @@ export function printerStatusText(printer: Printer): { online: boolean; label: s
   if (!printer.last_seen) {
     return { online: false, label: '⚫ Not yet connected' };
   }
+  // A paused printer is still checking in, but nothing will print until its
+  // owner resumes it, so it shows as offline.
+  if (printer.paused) {
+    return { online: false, label: '⚫ Offline' };
+  }
   const diff = Date.now() - new Date(printer.last_seen + 'Z').getTime();
   const minutes = Math.floor(diff / 60_000);
   const online = minutes < 6;

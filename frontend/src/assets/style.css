@@ -1368,6 +1368,7 @@ footer a:hover { text-decoration: underline; }
 }
 .paper-width-option {
   display: flex;
+  flex-direction: row; /* the global label rule stacks its children */
   align-items: flex-start;
   gap: 10px;
   padding: 12px 14px;
@@ -1533,6 +1534,13 @@ footer a:hover { text-decoration: underline; }
 }
 .pa-view-btn:hover { background: var(--bg-input); color: var(--fg); }
 .pa-view-btn.active { background: var(--accent); color: #fff; }
+.pa-view-btn:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
+.pa-view-btn:disabled { cursor: default; opacity: 0.6; }
+
+/* The same toggle as a form control on My Printer › Settings. */
+.settings-toggle { align-self: flex-start; max-width: 100%; }
+.settings-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.settings-inline input[type="number"] { width: 70px; padding: 5px 10px; }
 
 /* Message list shared by all/thread views */
 .pa-message-list {
@@ -2961,9 +2969,9 @@ textarea.word-wrap-on {
 .mgmt-row-text { min-width: 0; }
 .mgmt-row-title { font-size: 14px; font-weight: 600; color: var(--fg); margin-bottom: 2px; }
 .mgmt-row-desc { font-size: 12.5px; color: var(--fg-muted); line-height: 1.5; max-width: 60ch; }
-.mgmt-status-on  { color: var(--success, #22c55e); }
-.mgmt-status-off { color: var(--fg-muted); }
 .mgmt-row .btn { flex-shrink: 0; }
+/* Printing and Status toggles sit at the right of their row. */
+.mgmt-row .settings-toggle { align-self: center; flex-shrink: 0; }
 
 /* Danger zone */
 .danger-zone {

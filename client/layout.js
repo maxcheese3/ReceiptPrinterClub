@@ -5,6 +5,10 @@
  * escpos.js turns the model into printer bytes (the normal path on every OS);
  * output.js has a fallback that hands the same model to an OS print driver.
  *
+ * A message is usually one receipt. buildJobs() returns a list of models, each
+ * printed and cut on its own, so a printer set to print images on a separate
+ * receipt gets the image as a second job.
+ *
  * Model blocks:
  *   { type: "line",   size, invert, tight, spans: [Span] }
  *   { type: "image",  buffer }                     image file bytes
@@ -455,8 +459,28 @@ function buildReceipt(message, { widthDots = DEFAULT_WIDTH_DOTS, emojiMode = "gl
     if (hasBody) model.push({ type: "gap", dots: IMAGE_GAP_DOTS });
     model.push({ type: "image", buffer: imageBuffer });
   }
-  model.push(ruleLine(NORMAL, colsFor(widthDots, NORMAL), "═"));
+  // The header already ends with a rule, so a header-only receipt (the first
+  // half of an image-only message printed separately) doesn't get a second one.
+  if (hasBody || imageBuffer) model.push(ruleLine(NORMAL, colsFor(widthDots, NORMAL), "═"));
   return model;
+}
+
+/**
+ * The print jobs for a message, each printed and cut on its own. Normally one
+ * receipt; with imageCut "separate" a message's image follows on a receipt of
+ * its own, with nothing else on it.
+ *
+ * Takes buildReceipt's options plus:
+ * @param opts.imageCut    "same" | "separate"
+ * @returns [model, ...]
+ */
+function buildJobs(message, opts = {}) {
+  const { imageBuffer = null, imageCut = "same" } = opts;
+  if (!imageBuffer || imageCut !== "separate") return [buildReceipt(message, opts)];
+  return [
+    buildReceipt(message, { ...opts, imageBuffer: null }),
+    [{ type: "image", buffer: imageBuffer }],
+  ];
 }
 
 // Tick marks every 8 dots, taller every 64, and solid bars at both edges, so
@@ -542,7 +566,7 @@ function buildTestPage({ widthDots = DEFAULT_WIDTH_DOTS } = {}) {
 module.exports = {
   SIZES, DEFAULT_PT, DEFAULT_WIDTH_DOTS, MAX_EMOJI,
   sizeForPt, colsFor, dotsForCols, emojiGlyph, CP437_BYTE,
-  buildReceipt, buildTestPage,
+  buildReceipt, buildJobs, buildTestPage,
   // exported for tests
   wrapAtoms, toAtoms, parseInline, newContext, isBigEmoji,
 };

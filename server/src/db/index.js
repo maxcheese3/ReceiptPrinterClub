@@ -130,6 +130,11 @@ function initSchema() {
   if (!pCols.includes("emoji_mode")) {
     db.exec("ALTER TABLE printers ADD COLUMN emoji_mode TEXT NOT NULL DEFAULT 'glyph'");
   }
+  // Where a message's image prints: a 'separate' receipt with its own cut (the
+  // default), or the 'same' receipt as the text (one cut).
+  if (!pCols.includes("image_cut")) {
+    db.exec("ALTER TABLE printers ADD COLUMN image_cut TEXT NOT NULL DEFAULT 'separate'");
+  }
   // Special message kinds the client renders itself (currently 'test_page').
   if (!msgCols.includes("kind")) db.exec("ALTER TABLE messages ADD COLUMN kind TEXT");
   // Body text alignment chosen by the sender: 'center' or 'right' (NULL = left).
@@ -137,6 +142,9 @@ function initSchema() {
   // Version of the print client that last polled, from its X-Client-Version
   // header. NULL with a last_seen means a client from before 4.0 (no header).
   if (!pCols.includes("client_version")) db.exec("ALTER TABLE printers ADD COLUMN client_version TEXT");
+  // Printing paused from My Printer. The client keeps checking in, but the poll
+  // hands it no messages, so they wait as 'pending' and all print on resume.
+  if (!pCols.includes("paused")) db.exec("ALTER TABLE printers ADD COLUMN paused INTEGER NOT NULL DEFAULT 0");
 }
 
 // ── Printers ──────────────────────────────────────────────────────────────────
@@ -146,10 +154,11 @@ function listPrinters(activeOnly = true) {
   // Retired (soft-deleted) printers are excluded from BOTH views — the public
   // directory and the admin/superadmin list. Their row still exists so message
   // history and threading keep resolving names, but they're no longer a live
-  // printer anyone can see or send to.
+  // printer anyone can see or send to. `paused` is in the public list so a
+  // paused printer shows as offline straight away, not once last_seen goes stale.
   const sql = activeOnly
-    ? `SELECT id, name, description, location, print_width_dots, client_version, created_at, last_seen FROM printers WHERE active = 1 AND hidden = 0 AND deleted_at IS NULL ORDER BY name`
-    : `SELECT id, name, description, location, active, hidden, api_key, print_width_dots, emoji_mode, client_version, created_at, last_seen FROM printers WHERE deleted_at IS NULL ORDER BY name`;
+    ? `SELECT id, name, description, location, print_width_dots, client_version, paused, created_at, last_seen FROM printers WHERE active = 1 AND hidden = 0 AND deleted_at IS NULL ORDER BY name`
+    : `SELECT id, name, description, location, active, hidden, paused, api_key, print_width_dots, emoji_mode, image_cut, client_version, created_at, last_seen FROM printers WHERE deleted_at IS NULL ORDER BY name`;
   return db.prepare(sql).all();
 }
 
@@ -157,12 +166,12 @@ function listPrinters(activeOnly = true) {
 // includes api_key; add it explicitly where the caller is allowed to see it.
 function printerInfo(row) {
   const {
-    id, name, description, location, print_width_dots, emoji_mode, client_version,
-    active, hidden, created_at, last_seen,
+    id, name, description, location, print_width_dots, emoji_mode, image_cut, client_version,
+    active, hidden, paused, created_at, last_seen,
   } = row;
   return {
-    id, name, description, location, print_width_dots, emoji_mode, client_version,
-    active, hidden, created_at, last_seen,
+    id, name, description, location, print_width_dots, emoji_mode, image_cut, client_version,
+    active, hidden, paused, created_at, last_seen,
   };
 }
 
@@ -179,9 +188,11 @@ function getPrinterByApiKey(apiKey) {
 }
 
 function createPrinter({ id, name, description, location, api_key, print_width_dots }) {
+  // image_cut is set explicitly: a database that ran the image_cut migration
+  // before the default changed still has 'same' as the column default.
   getDb().prepare(
-    `INSERT INTO printers (id, name, description, location, api_key, print_width_dots)
-     VALUES (@id, @name, @description, @location, @api_key, @print_width_dots)`
+    `INSERT INTO printers (id, name, description, location, api_key, print_width_dots, image_cut)
+     VALUES (@id, @name, @description, @location, @api_key, @print_width_dots, 'separate')`
   ).run({ id, name, description, location, api_key, print_width_dots });
   return getPrinterById(id);
 }
@@ -192,6 +203,10 @@ function updatePrinterLastSeen(id, clientVersion = null) {
 
 function deactivatePrinter(id) {
   getDb().prepare(`UPDATE printers SET active = 0 WHERE id = ?`).run(id);
+}
+
+function setPrinterPaused(id, paused) {
+  getDb().prepare(`UPDATE printers SET paused = ? WHERE id = ?`).run(paused ? 1 : 0, id);
 }
 
 // ── Messages ─────────────────────────────────────────────────────────────────
@@ -289,6 +304,7 @@ function updatePrinter(id, fields) {
     `UPDATE printers
      SET name = @name, description = @description, location = @location,
          print_width_dots = @print_width_dots, emoji_mode = @emoji_mode,
+         image_cut = @image_cut,
          active = @active, hidden = @hidden
      WHERE id = @id`
   ).run({ ...fields, id });
@@ -582,7 +598,7 @@ function getRecentActivity(printer_id, { limit = 10, offset = 0 } = {}) {
 module.exports = {
   getDb,
   listPrinters, printerInfo, getPrinterById, getPrinterByApiKey,
-  createPrinter, updatePrinterLastSeen, deactivatePrinter,
+  createPrinter, updatePrinterLastSeen, deactivatePrinter, setPrinterPaused,
   createMessage, getMessageById, getPendingMessages, hasPendingTestPage,
   setMessageStatus, getStats,
   updatePrinter, hardDeletePrinter, softDeletePrinter, getAllMessages, getGlobalStats, getPublicStats,

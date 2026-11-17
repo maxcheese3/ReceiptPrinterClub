@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { usePrinterAuth } from '../contexts/PrinterAuthContext';
+import { clientLabel } from '../lib/printers';
 
 interface PrinterPageLayoutProps {
   children: React.ReactNode;
@@ -17,6 +18,9 @@ export default function PrinterPageLayout({ children }: PrinterPageLayoutProps) 
   const metaParts: string[] = [];
   if (printer?.name) metaParts.push(printer.name);
   if (printer?.location) metaParts.push(printer.location);
+  // "Client 4.1.0" or "Old client", as on the directory cards; nothing until it has connected.
+  const client = printer ? clientLabel(printer) : null;
+  if (client) metaParts.push(client);
 
   return (
     <section className="tab-panel active">

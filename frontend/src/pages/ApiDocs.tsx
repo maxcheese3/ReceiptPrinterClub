@@ -20,6 +20,7 @@ export default function ApiDocs() {
       "location": "Lobby",
       "print_width_dots": 384,      // 384 / 512 / 576 = 32 / 42 / 48 chars per line
       "client_version": "4.0.0",    // null = old client or never connected
+      "paused": 0,                  // 1 = owner paused printing; treat as offline
       "last_seen": "2026-05-06T12:00:00"
     }
   ]
@@ -95,6 +96,8 @@ image      = <file>`}</code></pre>
   "printer_id": "uuid",
   "print_width_dots": 384,
   "emoji_mode": "glyph",               // glyph | text
+  "image_cut": "separate",             // separate | same
+  "paused": false,                     // true: paused on My Printer, messages is empty
   "messages": [
     {
       "id":           "uuid",
